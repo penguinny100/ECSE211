@@ -4,8 +4,8 @@ from utils.sound import Sound
 from utils.brick import TouchSensor, EV3ColorSensor, EV3UltrasonicSensor, Motor
 
 SPEED = 180
-MOTOR_R = Motor("A")
-MOTOR_L = Motor("B")
+MOTOR_R = Motor("D")
+MOTOR_L = Motor("A")
 COLOR_SENSOR = EV3ColorSensor("1")
 TOUCH_SENSOR = TouchSensor("2")
 ULTRASONIC_SENSOR = EV3UltrasonicSensor("3")
@@ -75,6 +75,8 @@ def return_to_mailroom():
 
 def turn(angle):
     stop_movement()
+    MOTOR_L.set_limits(dps=SPEED)
+    MOTOR_R.set_limits(dps=SPEED)
     sleep(0.25)
     if angle < 0: # left
         MOTOR_L.set_position_relative(-int(angle * ORIENT_TO_DEG))

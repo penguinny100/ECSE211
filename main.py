@@ -26,11 +26,11 @@ def emergency_stop():
     while not emergency_stopped:
         if TOUCH_SENSOR.is_pressed():
             emergency_stopped = True
-            stop_movement()
             print("Emergency stop activated")
             
 def follow_line():
     while not emergency_stopped:
+        print("Moving forward")
         move_forward()
         sleep(3)
         print("Turning right 90 degrees")
@@ -41,6 +41,11 @@ def follow_line():
         sleep(3)
         print("Turning 180 degrees")
         turn(180)
+        sleep(3)
+        print("Moving backward")
+        move_backward()
+        sleep(3)
+    stop_movement()
 
 def stop_movement():
     MOTOR_R.set_dps(0)

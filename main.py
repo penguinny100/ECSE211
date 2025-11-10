@@ -19,6 +19,9 @@ RB = 7 # radius of turning circle
 RW = 2 # wheel radius
 ORIENT_TO_DEG = RB / RW
 
+THRESHOLD = 40
+turn_constant = 3.0
+
 emergency_stopped = False
 
 def emergency_stop():
@@ -29,23 +32,25 @@ def emergency_stop():
             print("Emergency stop activated")
             
 def follow_line():
+    global emergency_stopped
+    print("Starting line following")
     while not emergency_stopped:
-        print("Moving forward")
-        move_forward()
-        sleep(3)
-        print("Turning right 90 degrees")
-        turn(90)
-        sleep(3)
-        turn(-90)
-        print("Turning left 90 degrees")
-        sleep(3)
-        print("Turning 180 degrees")
-        turn(180)
-        sleep(3)
-        print("Moving backward")
-        move_backward()
-        sleep(3)
+        light_value = COLOR_SENSOR.get_red()
+        if light_value is None:
+            continue
+
+        error = light_value - THRESHOLD
+        turn = error * turn_constant
+        left_speed = SPEED - turn
+        right_speed = SPEED + turn
+
+        MOTOR_L.set_dps(left_speed)
+        MOTOR_R.set_dps(right_speed)
+
+        sleep(0.05)
+        
     stop_movement()
+    print("Stopping line following")
 
 def stop_movement():
     MOTOR_R.set_dps(0)

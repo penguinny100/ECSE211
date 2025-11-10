@@ -6,7 +6,11 @@ from utils.brick import TouchSensor, EV3ColorSensor, EV3UltrasonicSensor, Motor
 SPEED = 180
 MOTOR_R = Motor("D")
 MOTOR_L = Motor("A")
+
 COLOR_SENSOR = EV3ColorSensor("1")
+COLOUR_THRESHOLD = 0.25
+COLOUR_DETECTION_INTERVAL = 0.2
+
 TOUCH_SENSOR = TouchSensor("2")
 ULTRASONIC_SENSOR = EV3UltrasonicSensor("3")
 
@@ -34,6 +38,7 @@ def emergency_stop():
 def follow_line():
     global emergency_stopped
     print("Starting line following")
+    red_timer = 0 
     while not emergency_stopped:
         light_value = COLOR_SENSOR.get_red()
         if light_value is None:
@@ -47,6 +52,15 @@ def follow_line():
         MOTOR_L.set_dps(left_speed)
         MOTOR_R.set_dps(right_speed)
 
+        red_timer += 0.05
+        if red_timer >= COLOUR_DETECTION_INTERVAL:
+            red_timer = 0
+            if detect_red():
+                print("RED RED RED DETECTED! RED RED RED DETECTED!")
+                MISSION_COMPLETE_SOUND.play()
+                turn(180)
+                sleep(2)
+                turn(180)
         sleep(0.05)
         
     stop_movement()
@@ -69,6 +83,20 @@ def return_to_road():
 
 def scan_room():
     return
+
+def detect_red():
+    rgb = COLOR_SENSOR.get_rgb()
+    if rgb is None:
+        return False
+    r, g, b = rgb
+    print(f"R: {r} G: {g} B: {b}")
+    total = r + g + b
+    if total == 0:
+        return False
+    r = r / total
+    g = g / total
+    b = b / total
+    return r > COLOUR_THRESHOLD and r > g + 0.1 and r > b + 0.1
 
 def drop_package():
     DELIVERY_SOUND.play()

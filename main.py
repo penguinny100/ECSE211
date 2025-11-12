@@ -23,7 +23,7 @@ COLOR_CHECK_INTERVAL = 0.15
 # the colour sensor's at. Then, print a reading when its over the black line. Then,
 # print a reading when its over the white line. Then, compute the average.
 # Turn constant is how sharply it corrects. Tune this up or down as needed as well.
-# Color detection now uses ColourProcessing for modularity, thresholds removed as redundant.
+# Color detection now uses color_detector (from utils) for modularity, thresholds removed as redundant.
 
 # line following
 LINE_THRESHOLD = 11

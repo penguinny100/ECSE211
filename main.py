@@ -3,6 +3,7 @@ from time import sleep
 from enum import Enum
 from utils.sound import Sound
 from utils.brick import TouchSensor, EV3ColorSensor, EV3UltrasonicSensor, Motor
+from utils.colour_processing import ColourProcessing
 
 # motors and speed
 SPEED = 180
@@ -22,11 +23,7 @@ COLOR_CHECK_INTERVAL = 0.15
 # the colour sensor's at. Then, print a reading when its over the black line. Then,
 # print a reading when its over the white line. Then, compute the average.
 # Turn constant is how sharply it corrects. Tune this up or down as needed as well.
-# Similarly, other colour thresholds will have to be tuned with testing as well.
-YELLOW_THRESHOLD = 0.30
-BLUE_THRESHOLD = 0.28
-GREEN_THRESHOLD = 0.28
-RED_THRESHOLD = 0.30
+# Color detection now uses ColourProcessing for modularity, thresholds removed as redundant.
 
 # line following
 LINE_THRESHOLD = 11
@@ -41,11 +38,13 @@ MISSION_COMPLETE_SOUND = Sound(duration=1, volume=80, pitch="G5")
 # of one wheel to the middle of the thickness of the other wheel divided by two (aka the turning radius)
 # RW is the radius of a wheel. This needs to be remeasured as you rebuild the robot. This makes sure
 # it actually turns the right angle when we want it to
-RB = 7 # radius of turning circle
-RW = 2 # wheel radius
+RB = 7  # radius of turning circle
+RW = 2  # wheel radius
 ORIENT_TO_DEG = RB / RW
 
 # states
+
+
 class State(Enum):
     FOLLOWING_LINE = "FOLLOWING_LINE"
     CHECKING_DOORWAY = "CHECKING_DOORWAY"
@@ -57,26 +56,31 @@ class State(Enum):
     MAIL_ROOM_FOUND = "MAIL_ROOM_FOUND"
     MISSION_COMPLETE = "MISSION_COMPLETE"
 
+
 emergency_stopped = False
 color_check_timer = 0
 packages_delivered = 0
 current_state = State.FOLLOWING_LINE
 # ============= UTILITY FUNCTIONS =============
 
+
 def stop_movement():
     """Stop both motors"""
     MOTOR_R.set_dps(0)
     MOTOR_L.set_dps(0)
+
 
 def move_forward():
     """Move both motors forward at a specified speed"""
     MOTOR_R.set_dps(SPEED)
     MOTOR_L.set_dps(SPEED)
 
+
 def move_backward():
     """Move both motors backward at a specified speed"""
     MOTOR_R.set_dps(-SPEED)
     MOTOR_L.set_dps(-SPEED)
+
 
 def turn(angle):
     """Turns the robot at by the specified angle (pos right, neg left)"""
@@ -84,27 +88,31 @@ def turn(angle):
     MOTOR_L.set_limits(dps=SPEED)
     MOTOR_R.set_limits(dps=SPEED)
     sleep(0.25)
-    if angle < 0: # left
+    if angle < 0:  # left
         MOTOR_L.set_position_relative(-int(angle * ORIENT_TO_DEG))
         MOTOR_R.set_position_relative(int(angle * ORIENT_TO_DEG))
-    else: # right
+    else:  # right
         MOTOR_L.set_position_relative(int(angle * ORIENT_TO_DEG))
         MOTOR_R.set_position_relative(-int(angle * ORIENT_TO_DEG))
     sleep(abs(angle) / 90.0 * 0.5)
     stop_movement()
     sleep(0.2)
 
+
 def turn_left():
     print("Turning left")
     turn(-90)
+
 
 def turn_right():
     print("Turning left")
     turn(90)
 
+
 def turn_around():
     print("Turning around")
     turn(180)
+
 
 def get_distance():
     """Gets the distance measured by the US sensor"""
@@ -112,6 +120,7 @@ def get_distance():
     return dist if dist is not None else 999
 
 # ============= COLOR DETECTION =============
+
 
 def get_normalized_rgb():
     """Get normalized RGB values"""
@@ -124,53 +133,47 @@ def get_normalized_rgb():
         return None
     return (r/total, g/total, b/total)
 
+
+def get_color_name():
+    """Get the name of the detected color using ColourProcessing"""
+    rgb = COLOR_SENSOR.get_rgb()
+    if rgb is None:
+        return "unknown"
+    processor = ColourProcessing()
+    return processor.identify_colour(rgb)
+
+
 def detect_yellow():
     """Detect yellow tile (office)"""
-    rgb = get_normalized_rgb()
-    if rgb is None:
-        return False
-    r, g, b = rgb
-    # Yellow = high red + high green, low blue
-    return (r > YELLOW_THRESHOLD and g > YELLOW_THRESHOLD and 
-            b < 0.25 and abs(r - g) < 0.15)
+    color_name = get_color_name()
+    return color_name == "yellow"
+
 
 def detect_blue():
     """Detect blue tile (mail room)"""
-    rgb = get_normalized_rgb()
-    if rgb is None:
-        return False
-    r, g, b = rgb
-    # Blue = high blue, low red and green
-    return b > BLUE_THRESHOLD and b > r + 0.1 and b > g + 0.1
+    color_name = get_color_name()
+    return color_name == "blue"
+
 
 def detect_green():
     """Detect green sticker (recipient present)"""
-    rgb = get_normalized_rgb()
-    if rgb is None:
-        return False
-    r, g, b = rgb
-    # Green = high green, low red and blue
-    return g > GREEN_THRESHOLD and g > r + 0.1 and g > b + 0.1
+    color_name = get_color_name()
+    return color_name == "green"
+
 
 def detect_red():
     """Detect red sticker (restricted area)"""
-    rgb = get_normalized_rgb()
-    if rgb is None:
-        return False
-    r, g, b = rgb
-    # Red = high red, low green and blue
-    return r > RED_THRESHOLD and r > g + 0.15 and r > b + 0.15
+    color_name = get_color_name()
+    return color_name == "red"
+
 
 def detect_orange():
     """Detect orange doorway"""
-    rgb = get_normalized_rgb()
-    if rgb is None:
-        return False
-    r, g, b = rgb
-    # Orange = high red, medium green, low blue
-    return r > 0.35 and 0.15 < g < 0.35 and b < 0.20
+    color_name = get_color_name()
+    return color_name == "orange"
 
 # ============= LINE FOLLOWING =============
+
 
 def follow_line():
     """Follows the black line and detects colour changes for doors etc"""
@@ -196,35 +199,41 @@ def follow_line():
         if detect_orange() and packages_delivered < 2:
             print("Orange detected - Doorway")
             current_state = State.CHECKING_DOORWAY
-        
+
         if detect_red():
             print("Red detected - Restricted")
             current_state = State.AVOIDING_RESTRICTED
-        
+
         if detect_blue() and packages_delivered >= 2:
             print("Blue detected - Mail Room")
             current_state = State.MAIL_ROOM_FOUND
-        
+
     sleep(0.05)
-    
+
     stop_movement()
     print("Stopping line following")
+
 
 def return_to_road():
     return
 
+
 def scan_room():
     return
+
 
 def drop_package():
     DELIVERY_SOUND.play()
     print("Package delivered")
+
 
 def return_to_mailroom():
     MISSION_COMPLETE_SOUND.play()
     print("Mission complete")
 
 # ============= EMERGENCY STOP =============
+
+
 def emergency_stop():
     global emergency_stopped
     while not emergency_stopped:
@@ -234,6 +243,8 @@ def emergency_stop():
             sleep(0.1)
 
 # ============= STATE MACHINE =============
+
+
 def state_machine():
     """Main state machine for robot behavior"""
     global current_state, emergency_stopped
@@ -279,5 +290,6 @@ def main():
 
     print("Program terminated")
 
-if __name__=='__main__':
+
+if __name__ == '__main__':
     main()

@@ -1,10 +1,14 @@
 from utils.brick import TouchSensor, EV3ColorSensor, EV3UltrasonicSensor
-from utils.colour_processing import ColourProcessing
+from utils.color_detector import ColorDetector
 
 """
-This file currently serves as a testing utility for the sensors. It should allow for testing of individual sensors 
-or color processing without running the full robot program. We should first create a simple script that initializes the 
-SensorController and prints out the sensor readings to confirm they’re functioning properly before integrating it into the main robot logic.
+Sensor testing module for robotic hardware validation.
+
+This module provides isolated testing capabilities for sensor components,
+enabling verification of touch, color, and ultrasonic sensor functionality
+independently of the main robotic control system. Initialize the SensorController
+instance and output readings to validate hardware integration and data accuracy
+prior to full system deployment.
 """
 
 
@@ -16,25 +20,15 @@ class SensorController:
         self.us_sensor = EV3UltrasonicSensor("3")
 
     def get_colour_name(self):
-
         rgb = self.colour_sensor.get_rgb()
-        processor = ColourProcessing()
-        return processor.identify_colour(rgb)
+        processor = ColorDetector()
+        return processor.detect_color(rgb)
 
     def __get_colour_raw(self):
-
-        # returns the raw color data in its original form without any processing or conversion.
-
         return self.colour_sensor.get_rgb()
 
     def get_touch_sensor_state(self):
-
-        # Retrieves the current state of the touch sensor.
-
         return self.touch_sensor.is_pressed()
 
     def get_us_sensor_distance(self):
-
-        # Retrieves the ultrasonic sensor distance measurement to determine the proximity of an object.
-
         return self.us_sensor.get_cm()

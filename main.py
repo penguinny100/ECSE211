@@ -3,7 +3,7 @@ from time import sleep
 from enum import Enum
 from utils.sound import Sound
 from utils.brick import TouchSensor, EV3ColorSensor, EV3UltrasonicSensor, Motor
-from utils.colour_processing import ColourProcessing
+from utils.color_detector import ColorDetector
 
 # motors and speed
 SPEED = 180
@@ -135,12 +135,12 @@ def get_normalized_rgb():
 
 
 def get_color_name():
-    """Get the name of the detected color using ColourProcessing"""
+    """Get the name of the detected color using ColorDetector"""
     rgb = COLOR_SENSOR.get_rgb()
     if rgb is None:
         return "unknown"
-    processor = ColourProcessing()
-    return processor.identify_colour(rgb)
+    processor = ColorDetector()
+    return processor.detect_color(rgb)
 
 
 def detect_yellow():

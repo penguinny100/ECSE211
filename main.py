@@ -196,31 +196,37 @@ def follow_line():
     if color_check_timer >= COLOR_CHECK_INTERVAL:
         color_check_timer = 0
 
-        if detect_orange() and packages_delivered < 2:
-            print("Orange detected - Doorway")
-            current_state = State.CHECKING_DOORWAY
+        if detect_orange():
+            if packages_delivered < 2:
+                print("Orange detected - Doorway")
+                current_state = State.CHECKING_DOORWAY
+            else:
+                print("Orange detected - Mission already complete")
+                current_state = State.AVOIDING_RESTRICTED
 
         if detect_red():
             print("Red detected - Restricted")
             current_state = State.AVOIDING_RESTRICTED
 
-        if detect_blue() and packages_delivered >= 2:
-            print("Blue detected - Mail Room")
-            current_state = State.MAIL_ROOM_FOUND
+        if detect_blue():
+            if packages_delivered >= 2:
+                print("Blue detected - Entering")
+                current_state = State.MAIL_ROOM_FOUND
+            else:
+                print("Blue detected - Mission not yet complete")
+                current_state = State.AVOIDING_RESTRICTED
 
     sleep(0.05)
 
     stop_movement()
     print("Stopping line following")
 
-
-def return_to_road():
-    return
-
+# ============= ROOM OPERATIONS =============
+def avoid_restricted():
+    turn_around()
 
 def scan_room():
     return
-
 
 def drop_package():
     DELIVERY_SOUND.play()
@@ -233,7 +239,6 @@ def return_to_mailroom():
 
 # ============= EMERGENCY STOP =============
 
-
 def emergency_stop():
     global emergency_stopped
     while not emergency_stopped:
@@ -244,38 +249,39 @@ def emergency_stop():
 
 # ============= STATE MACHINE =============
 
-
 def state_machine():
     """Main state machine for robot behavior"""
     global current_state, emergency_stopped
-    if current_state == State.FOLLOWING_LINE:
-        follow_line()
+    while not emergency_stopped():
+        if current_state == State.FOLLOWING_LINE:
+            follow_line()
 
-    elif current_state == State.CHECKING_DOORWAY:
-        pass
+        elif current_state == State.CHECKING_DOORWAY:
+            pass
 
-    elif current_state == State.AVOIDING_RESTRICTED:
-        pass
+        elif current_state == State.AVOIDING_RESTRICTED:
+            avoid_restricted()
+            current_state = State.FOLLOWING_LINE
 
-    elif current_state == State.ENTERING_ROOM:
-        pass
+        elif current_state == State.ENTERING_ROOM:
+            pass
 
-    elif current_state == State.SCANNING_ROOM:
-        pass
+        elif current_state == State.SCANNING_ROOM:
+            pass
 
-    elif current_state == State.DELIVERING:
-        pass
+        elif current_state == State.DELIVERING:
+            pass
 
-    elif current_state == State.EXITING_ROOM:
-        pass
+        elif current_state == State.EXITING_ROOM:
+            pass
 
-    elif current_state == State.MAIL_ROOM_FOUND:
-        pass
+        elif current_state == State.MAIL_ROOM_FOUND:
+            pass
 
-    elif current_state == State.MISSION_COMPLETE:
-        pass
+        elif current_state == State.MISSION_COMPLETE:
+            pass
 
-    sleep(0.05)
+        sleep(0.05)
 
 
 def main():

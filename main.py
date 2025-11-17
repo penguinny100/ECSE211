@@ -173,7 +173,7 @@ def follow_line():
     elif get_distance() < CORNER_THRESHOLD:
         print("Corner detected")
         # turn_right()
-    elif (HALFWAY_DOWN_MAP - 2) <= get_distance() <= (HALFWAY_DOWN_MAP_DOWN_MAP + 2):
+    elif (HALFWAY_DOWN_MAP - 2) <= get_distance() <= (HALFWAY_DOWN_MAP + 2):
         print("Mail room branch detected")
         # turn_right()
     elif (QUARTER_DOWN_MAP - 2) <= get_distance() <= (QUARTER_DOWN_MAP + 2):

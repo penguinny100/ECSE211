@@ -34,8 +34,10 @@ COLOR_CHECK_INTERVAL = 0.15
 LINE_CORRECTION = 20
 
 # turning
-TURN_INTO_ROOM_THRESHOLD = 600 #600cm half of map
-TURNING_INTO_CORNER_THRESHOLD = 5 #5cm distance before turning around to a corner
+MAP_LENGTH = 1200 #1200cm map length
+HALFWAY_DOWN_MAP = 1200 / 2
+QUARTER_DOWN_MAP = 1200 / 4
+CORNER_THRESHOLD = 5 #5cm distance before turning around to a corner
 
 # sounds
 DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
@@ -168,10 +170,13 @@ def follow_line():
 
     if not get_distance():
         pass
-    elif get_distance() < TURNING_INTO_CORNER_THRESHOLD:
+    elif get_distance() < CORNER_THRESHOLD:
         print("Corner detected")
         # turn_right()
-    elif (TURN_INTO_ROOM_THRESHOLD - 2) <= get_distance() <= (TURN_INTO_ROOM_THRESHOLD + 2):
+    elif (HALFWAY_DOWN_MAP - 2) <= get_distance() <= (HALFWAY_DOWN_MAP_DOWN_MAP + 2):
+        print("Mail room branch detected")
+        # turn_right()
+    elif (QUARTER_DOWN_MAP - 2) <= get_distance() <= (QUARTER_DOWN_MAP + 2):
         print("Room branch detected")
         # turn_right()
 

@@ -2,8 +2,13 @@ from threading import Thread
 from time import sleep
 from enum import Enum
 from utils.sound import Sound
-from utils.brick import TouchSensor, EV3ColorSensor, EV3UltrasonicSensor, Motor
-from utils.color_detector import ColorDetector
+from utils.brick import (
+    TouchSensor, 
+    EV3ColorSensor,
+    _color_names_by_code, 
+    EV3UltrasonicSensor, 
+    Motor
+)
 
 # motors and speed
 SPEED = 180
@@ -16,7 +21,7 @@ TOUCH_SENSOR = TouchSensor("2")
 ULTRASONIC_SENSOR = EV3UltrasonicSensor("3")
 
 # colors
-COLOR_SENSOR = EV3ColorSensor("4")
+COLOR_SENSOR = EV3ColorSensor("4", mode="id")
 COLOR_CHECK_INTERVAL = 0.15
 # Note from ben to whoever's working on it today: line threshold is the average between
 # the black reading and white reading. to tune it. build the robot so you know what height
@@ -121,56 +126,32 @@ def get_distance():
 
 # ============= COLOR DETECTION =============
 
-
-def get_normalized_rgb():
-    """Get normalized RGB values"""
-    rgb = COLOR_SENSOR.get_rgb()
-    if rgb is None:
-        return None
-    r, g, b = rgb
-    total = r + g + b
-    if total == 0:
-        return None
-    return (r/total, g/total, b/total)
-
-
 def get_color_name():
     """Get the name of the detected color using ColorDetector"""
-    rgb = COLOR_SENSOR.get_rgb()
-    if rgb is None:
-        return "unknown"
-    processor = ColorDetector()
-    return processor.detect_color(rgb)
+    color_code = COLOR_SENSOR.get_value()
+    return _color_names_by_code(color_code, "Unknown")
 
 
 def detect_yellow():
     """Detect yellow tile (office)"""
-    color_name = get_color_name()
-    return color_name == "yellow"
+    return get_color_name().lower() == "yellow"
 
 
 def detect_blue():
     """Detect blue tile (mail room)"""
-    color_name = get_color_name()
-    return color_name == "blue"
-
+    return get_color_name.lower() == "blue"
 
 def detect_green():
     """Detect green sticker (recipient present)"""
-    color_name = get_color_name()
-    return color_name == "green"
-
+    return get_color_name.lower() == "green"
 
 def detect_red():
     """Detect red sticker (restricted area)"""
-    color_name = get_color_name()
-    return color_name == "red"
-
+    return get_color_name.lower() == "red"
 
 def detect_orange():
     """Detect orange doorway"""
-    color_name = get_color_name()
-    return color_name == "orange"
+    return get_color_name.lower() == "orange"
 
 # ============= LINE FOLLOWING =============
 
@@ -179,6 +160,10 @@ def follow_line():
     """Follows the black line and detects colour changes for doors etc"""
     global current_state, emergency_stopped, color_check_timer
     print("Starting line following")
+
+    if not COLOR_SENSOR.set_mode("red"):
+        print("Could not switch color sensor to red mode. continuing")
+        return
 
     light_value = COLOR_SENSOR.get_red()
     if light_value is None:
@@ -194,6 +179,9 @@ def follow_line():
 
     color_check_timer += 0.05
     if color_check_timer >= COLOR_CHECK_INTERVAL:
+        if not COLOR_SENSOR.set_mode("id"):
+            print("Could not switch color sensor to id mode. continuing")
+            return
         color_check_timer = 0
 
         if detect_orange():

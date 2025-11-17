@@ -31,8 +31,7 @@ COLOR_CHECK_INTERVAL = 0.15
 # Color detection now uses color_detector (from utils) for modularity, thresholds removed as redundant.
 
 # line following
-LINE_THRESHOLD = 11
-turn_constant = 1.5
+LINE_CORRECTION = 20
 
 # sounds
 DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
@@ -68,18 +67,15 @@ packages_delivered = 0
 current_state = State.FOLLOWING_LINE
 # ============= UTILITY FUNCTIONS =============
 
-
 def stop_movement():
     """Stop both motors"""
     MOTOR_R.set_dps(0)
     MOTOR_L.set_dps(0)
 
-
 def move_forward():
     """Move both motors forward at a specified speed"""
     MOTOR_R.set_dps(SPEED)
     MOTOR_L.set_dps(SPEED)
-
 
 def move_backward():
     """Move both motors backward at a specified speed"""
@@ -131,11 +127,17 @@ def get_color_name():
     color_code = COLOR_SENSOR.get_value()
     return _color_names_by_code(color_code, "Unknown")
 
+def detect_black():
+    """Detect black line"""
+    return get_color_name().lower() == "black"
+
+def detect_white():
+    """Detect white tile (off the line)"""
+    return get_color_name().lower() == "white"
 
 def detect_yellow():
     """Detect yellow tile (office)"""
     return get_color_name().lower() == "yellow"
-
 
 def detect_blue():
     """Detect blue tile (mail room)"""
@@ -155,27 +157,17 @@ def detect_orange():
 
 # ============= LINE FOLLOWING =============
 
-
 def follow_line():
     """Follows the black line and detects colour changes for doors etc"""
     global current_state, emergency_stopped, color_check_timer
     print("Starting line following")
 
-    if not COLOR_SENSOR.set_mode("red"):
-        print("Could not switch color sensor to red mode. continuing")
-        return
-
-    light_value = COLOR_SENSOR.get_red()
-    if light_value is None:
-        return
-
-    error = LINE_THRESHOLD - light_value
-    turn = error * turn_constant
-    left_speed = SPEED - turn
-    right_speed = SPEED + turn
-
-    MOTOR_L.set_dps(left_speed)
-    MOTOR_R.set_dps(right_speed)
+    if detect_black(): 
+        move_forward()
+        sleep(0.2)
+    elif detect_white():
+        print("White detected")
+        emergency_stopped = True
 
     color_check_timer += 0.05
     if color_check_timer >= COLOR_CHECK_INTERVAL:
@@ -187,22 +179,22 @@ def follow_line():
         if detect_orange():
             if packages_delivered < 2:
                 print("Orange detected - Doorway")
-                current_state = State.CHECKING_DOORWAY
+                # current_state = State.CHECKING_DOORWAY
             else:
                 print("Orange detected - Mission already complete")
-                current_state = State.AVOIDING_RESTRICTED
+                # current_state = State.AVOIDING_RESTRICTED
 
         if detect_red():
             print("Red detected - Restricted")
-            current_state = State.AVOIDING_RESTRICTED
+            # current_state = State.AVOIDING_RESTRICTED
 
         if detect_blue():
             if packages_delivered >= 2:
                 print("Blue detected - Entering")
-                current_state = State.MAIL_ROOM_FOUND
+                # current_state = State.MAIL_ROOM_FOUND
             else:
                 print("Blue detected - Mission not yet complete")
-                current_state = State.AVOIDING_RESTRICTED
+                # current_state = State.AVOIDING_RESTRICTED
 
     sleep(0.05)
 
@@ -219,7 +211,6 @@ def scan_room():
 def drop_package():
     DELIVERY_SOUND.play()
     print("Package delivered")
-
 
 def return_to_mailroom():
     MISSION_COMPLETE_SOUND.play()

@@ -33,6 +33,10 @@ COLOR_CHECK_INTERVAL = 0.15
 # line following
 LINE_CORRECTION = 20
 
+# turning
+TURN_INTO_ROOM_THRESHOLD = 600 #600cm half of map
+TURNING_INTO_CORNER_THRESHOLD = 5 #5cm distance before turning around to a corner
+
 # sounds
 DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
 MISSION_COMPLETE_SOUND = Sound(duration=1, volume=80, pitch="G5")
@@ -161,6 +165,15 @@ def follow_line():
     """Follows the black line and detects colour changes for doors etc"""
     global current_state, emergency_stopped, color_check_timer
     print("Starting line following")
+
+    if not get_distance():
+        pass
+    elif get_distance() < TURNING_INTO_CORNER_THRESHOLD:
+        print("Corner detected")
+        # turn_right()
+    elif (TURN_INTO_ROOM_THRESHOLD - 2) <= get_distance() <= (TURN_INTO_ROOM_THRESHOLD + 2):
+        print("Room branch detected")
+        # turn_right()
 
     if detect_black(): 
         move_forward()

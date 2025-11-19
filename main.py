@@ -3,10 +3,10 @@ from time import sleep
 from enum import Enum
 from utils.sound import Sound
 from utils.brick import (
-    TouchSensor, 
+    TouchSensor,
     EV3ColorSensor,
-    _color_names_by_code, 
-    EV3UltrasonicSensor, 
+    _color_names_by_code,
+    EV3UltrasonicSensor,
     Motor
 )
 
@@ -35,10 +35,10 @@ COLOR_CHECK_INTERVAL = 0.15
 LINE_CORRECTION = 20
 
 # turning
-MAP_LENGTH = 1200 #1200cm map length
-HALFWAY_DOWN_MAP = 1200 / 2 #cm
-QUARTER_DOWN_MAP = 1200 / 4 #cm
-DISTANCE_OF_BLACK_LINE_FROM_WALL = 10 #cm
+MAP_LENGTH = 1200  # 1200cm map length
+HALFWAY_DOWN_MAP = 1200 / 2  # cm
+QUARTER_DOWN_MAP = 1200 / 4  # cm
+DISTANCE_OF_BLACK_LINE_FROM_WALL = 10  # cm
 
 # sounds
 DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
@@ -55,15 +55,15 @@ ORIENT_TO_DEG = RB / RW
 
 # states
 
+
 class State(Enum):
     FOLLOWING_LINE = "FOLLOWING_LINE"
     CHECKING_DOORWAY = "CHECKING_DOORWAY"
-    AVOIDING_RESTRICTED = "AVOIDING_RESTRICTED"
+    # AVOIDING_RESTRICTED = "AVOIDING_RESTRICTED"
     ENTERING_ROOM = "ENTERING_ROOM"
     SCANNING_ROOM = "SCANNING_ROOM"
     DELIVERING = "DELIVERING"
     EXITING_ROOM = "EXITING_ROOM"
-    MAIL_ROOM_FOUND = "MAIL_ROOM_FOUND"
     MISSION_COMPLETE = "MISSION_COMPLETE"
 
 
@@ -73,15 +73,18 @@ packages_delivered = 0
 current_state = State.FOLLOWING_LINE
 # ============= UTILITY FUNCTIONS =============
 
+
 def stop_movement():
     """Stop both motors"""
     MOTOR_R.set_dps(0)
     MOTOR_L.set_dps(0)
 
+
 def move_forward():
     """Move both motors forward at a specified speed"""
     MOTOR_R.set_dps(SPEED)
     MOTOR_L.set_dps(SPEED)
+
 
 def move_backward():
     """Move both motors backward at a specified speed"""
@@ -110,17 +113,21 @@ def turn_left():
     print("Turning left")
     turn(-90)
 
+
 def drift_left():
     MOTOR_L.set_dps(SPEED - DRIFT)
     MOTOR_R.set_dps(SPEED + DRIFT)
+
 
 def turn_right():
     print("Turning left")
     turn(90)
 
+
 def drift_right():
     MOTOR_L.set_dps(SPEED + DRIFT)
     MOTOR_R.set_dps(SPEED - DRIFT)
+
 
 def turn_around():
     print("Turning around")
@@ -134,40 +141,49 @@ def get_distance():
 
 # ============= COLOR DETECTION =============
 
+
 def get_color_name():
     """Get the name of the detected color using ColorDetector"""
     color_code = COLOR_SENSOR.get_value()
     return _color_names_by_code(color_code, "Unknown")
 
+
 def detect_black():
     """Detect black line"""
     return get_color_name().lower() == "black"
+
 
 def detect_white():
     """Detect white tile (off the line)"""
     return get_color_name().lower() == "white"
 
+
 def detect_yellow():
     """Detect yellow tile (office)"""
     return get_color_name().lower() == "yellow"
+
 
 def detect_blue():
     """Detect blue tile (mail room)"""
     return get_color_name.lower() == "blue"
 
+
 def detect_green():
     """Detect green sticker (recipient present)"""
     return get_color_name.lower() == "green"
 
+
 def detect_red():
     """Detect red sticker (restricted area)"""
     return get_color_name.lower() == "red"
+
 
 def detect_orange():
     """Detect orange doorway"""
     return get_color_name.lower() == "orange"
 
 # ============= LINE FOLLOWING =============
+
 
 def follow_line():
     """Follows the black line and detects colour changes for doors etc"""
@@ -192,30 +208,30 @@ def follow_line():
         if detect_orange():
             if packages_delivered < 2:
                 print("Orange detected - Doorway")
-                # current_state = State.CHECKING_DOORWAY
+                current_state = State.CHECKING_DOORWAY
             else:
                 print("Orange detected - Mission already complete")
-                # current_state = State.AVOIDING_RESTRICTED
+                current_state = State.CHECKING_DOORWAY
 
         elif detect_black():
             print("Black detected - Corner or mail room")
-            turn_left() #turn 90 degrees ccw
-            if not get_distance():#error handling
+            turn_left()  # turn 90 degrees ccw
+            if not get_distance():  # error handling
                 pass
             elif get_distance() < DISTANCE_OF_BLACK_LINE_FROM_WALL + 5:
                 print("It's a corner!")
-                #to add: turn the corner on the outer boundary if this is the case
+                # to add: turn the corner on the outer boundary if this is the case
             else:
                 print("It's the mail room!")
                 if packages_delivered < 2:
                     print("Not ready yet...")
-                    turn_right()#this rotates it back to state that it was before
-                    #correction for infinite loop
+                    turn_right()  # this rotates it back to state that it was before
+                    # correction for infinite loop
                     move_forward()
                     sleep(0.5)
                 else:
                     print("Go to the mail room!")
-                    current_state = State.MISSION_COMPLETE #to change
+                    current_state = State.MISSION_COMPLETE  # to change
 
         elif detect_red():
             print("Red detected - Restricted")
@@ -235,21 +251,27 @@ def follow_line():
     print("Stopping line following")
 
 # ============= ROOM OPERATIONS =============
+
+
 def avoid_restricted():
     turn_around()
+
 
 def scan_room():
     return
 
+
 def drop_package():
     DELIVERY_SOUND.play()
     print("Package delivered")
+
 
 def return_to_mailroom():
     MISSION_COMPLETE_SOUND.play()
     print("Mission complete")
 
 # ============= EMERGENCY STOP =============
+
 
 def emergency_stop():
     global emergency_stopped
@@ -258,6 +280,58 @@ def emergency_stop():
             emergency_stopped = True
             print("Emergency stop activated")
             sleep(0.1)
+
+
+# ============= CHECKING DOORWAY ===========
+
+# this state encapsulates checking the doorway once orange is detected
+def checking_doorway():
+
+    global current_state, emergency_stopped
+
+    print("Checking doorway for restriction...")
+
+    # move forward slowly while we check
+    MOTOR_L.set_dps(SPEED)
+    MOTOR_R.set_dps(SPEED)
+
+    STEP = 0.05              # seconds between checks
+    HALF_DOOR_TIME = 0.5     # current hardcode assumption of 0.5 seconds to get halfway
+
+    elapsed = 0.0
+    saw_red = False
+
+    while elapsed < HALF_DOOR_TIME and not emergency_stopped:
+        if not COLOR_SENSOR.set_mode("id"):
+            print("Could not switch color sensor to id mode in checking_doorway")
+        else:
+            color_name = get_color_name().lower()
+            if color_name == "red":
+                print("Red detected in doorway -> restricted room. Skipping.")
+                saw_red = True
+                break
+
+        sleep(STEP)
+        elapsed += STEP
+
+    # stop where we are (either at halfway or when we saw red)
+    stop_movement()
+
+    if saw_red:
+        # We hit a restricted doorway: go back to following line.
+        MOTOR_L.set_dps(SPEED)
+        MOTOR_R.set_dps(SPEED)
+        sleep(0.5)   # tune: just enough to pass the doorway
+        stop_movement()
+        current_state = State.FOLLOWING_LINE
+
+    else:
+        # No red seen by halfway: safe doorway, enter the room.
+        print("Doorway clear (no red) -> entering room.")
+        current_state = State.ENTERING_ROOM
+
+    return
+
 
 # ============= STATE MACHINE =============
 

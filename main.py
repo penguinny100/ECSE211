@@ -12,6 +12,7 @@ from utils.brick import (
 
 # motors and speed
 SPEED = 180
+DRIFT = 10
 MOTOR_R = Motor("D")
 MOTOR_L = Motor("A")
 MOTOR_R.reset_encoder()
@@ -35,9 +36,9 @@ LINE_CORRECTION = 20
 
 # turning
 MAP_LENGTH = 1200 #1200cm map length
-HALFWAY_DOWN_MAP = 1200 / 2
-QUARTER_DOWN_MAP = 1200 / 4
-CORNER_THRESHOLD = 5 #5cm distance before turning around to a corner
+HALFWAY_DOWN_MAP = 1200 / 2 #cm
+QUARTER_DOWN_MAP = 1200 / 4 #cm
+DISTANCE_OF_BLACK_LINE_FROM_WALL = 10 #cm
 
 # sounds
 DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
@@ -48,12 +49,11 @@ MISSION_COMPLETE_SOUND = Sound(duration=1, volume=80, pitch="G5")
 # of one wheel to the middle of the thickness of the other wheel divided by two (aka the turning radius)
 # RW is the radius of a wheel. This needs to be remeasured as you rebuild the robot. This makes sure
 # it actually turns the right angle when we want it to
-RB = 7  # radius of turning circle
+RB = 5  # radius of turning circle
 RW = 2  # wheel radius
 ORIENT_TO_DEG = RB / RW
 
 # states
-
 
 class State(Enum):
     FOLLOWING_LINE = "FOLLOWING_LINE"
@@ -110,11 +110,17 @@ def turn_left():
     print("Turning left")
     turn(-90)
 
+def drift_left():
+    MOTOR_L.set_dps(SPEED - DRIFT)
+    MOTOR_R.set_dps(SPEED + DRIFT)
 
 def turn_right():
     print("Turning left")
     turn(90)
 
+def drift_right():
+    MOTOR_L.set_dps(SPEED + DRIFT)
+    MOTOR_R.set_dps(SPEED - DRIFT)
 
 def turn_around():
     print("Turning around")
@@ -168,24 +174,13 @@ def follow_line():
     global current_state, emergency_stopped, color_check_timer
     print("Starting line following")
 
-    if not get_distance():
+    distance = get_distance()
+    if not distance:
         pass
-    elif get_distance() < CORNER_THRESHOLD:
-        print("Corner detected")
-        # turn_right()
-    elif (HALFWAY_DOWN_MAP - 2) <= get_distance() <= (HALFWAY_DOWN_MAP + 2):
-        print("Mail room branch detected")
-        # turn_right()
-    elif (QUARTER_DOWN_MAP - 2) <= get_distance() <= (QUARTER_DOWN_MAP + 2):
-        print("Room branch detected")
-        # turn_right()
-
-    if detect_black(): 
-        move_forward()
-        sleep(0.2)
-    elif detect_white():
-        print("White detected")
-        emergency_stopped = True
+    elif distance < DISTANCE_OF_BLACK_LINE_FROM_WALL:
+        drift_left()
+    elif distance > DISTANCE_OF_BLACK_LINE_FROM_WALL:
+        drift_right()
 
     color_check_timer += 0.05
     if color_check_timer >= COLOR_CHECK_INTERVAL:
@@ -202,11 +197,31 @@ def follow_line():
                 print("Orange detected - Mission already complete")
                 # current_state = State.AVOIDING_RESTRICTED
 
-        if detect_red():
+        elif detect_black():
+            print("Black detected - Corner or mail room")
+            turn_left() #turn 90 degrees ccw
+            if not get_distance():#error handling
+                pass
+            elif get_distance() < DISTANCE_OF_BLACK_LINE_FROM_WALL + 5:
+                print("It's a corner!")
+                #to add: turn the corner on the outer boundary if this is the case
+            else:
+                print("It's the mail room!")
+                if packages_delivered < 2:
+                    print("Not ready yet...")
+                    turn_right()#this rotates it back to state that it was before
+                    #correction for infinite loop
+                    move_forward()
+                    sleep(0.5)
+                else:
+                    print("Go to the mail room!")
+                    current_state = State.MISSION_COMPLETE #to change
+
+        elif detect_red():
             print("Red detected - Restricted")
             # current_state = State.AVOIDING_RESTRICTED
 
-        if detect_blue():
+        elif detect_blue():
             if packages_delivered >= 2:
                 print("Blue detected - Entering")
                 # current_state = State.MAIL_ROOM_FOUND

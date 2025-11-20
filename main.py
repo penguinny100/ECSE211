@@ -23,7 +23,6 @@ ULTRASONIC_SENSOR = EV3UltrasonicSensor("3")
 
 # colors
 COLOR_SENSOR = EV3ColorSensor("4", mode="id")
-COLOR_CHECK_INTERVAL = 0.15
 # Note from ben to whoever's working on it today: line threshold is the average between
 # the black reading and white reading. to tune it. build the robot so you know what height
 # the colour sensor's at. Then, print a reading when its over the black line. Then,
@@ -38,7 +37,7 @@ LINE_CORRECTION = 20
 MAP_LENGTH = 1200  # 1200cm map length
 HALFWAY_DOWN_MAP = 1200 / 2  # cm
 QUARTER_DOWN_MAP = 1200 / 4  # cm
-DISTANCE_OF_BLACK_LINE_FROM_WALL = 10  # cm
+DISTANCE_OF_BLACK_LINE_FROM_WALL = 5  # cm
 
 # sounds
 DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
@@ -145,7 +144,7 @@ def get_distance():
 def get_color_name():
     """Get the name of the detected color using ColorDetector"""
     color_code = COLOR_SENSOR.get_value()
-    return _color_names_by_code(color_code, "Unknown")
+    return _color_names_by_code.get(color_code, "Unknown")
 
 
 def detect_black():
@@ -165,90 +164,82 @@ def detect_yellow():
 
 def detect_blue():
     """Detect blue tile (mail room)"""
-    return get_color_name.lower() == "blue"
+    return get_color_name().lower() == "blue"
 
 
 def detect_green():
     """Detect green sticker (recipient present)"""
-    return get_color_name.lower() == "green"
+    return get_color_name().lower() == "green"
 
 
 def detect_red():
     """Detect red sticker (restricted area)"""
-    return get_color_name.lower() == "red"
+    return get_color_name().lower() == "red"
 
 
 def detect_orange():
     """Detect orange doorway"""
-    return get_color_name.lower() == "orange"
+    return get_color_name().lower() == "orange"
 
 # ============= LINE FOLLOWING =============
 
 
 def follow_line():
     """Follows the black line and detects colour changes for doors etc"""
-    global current_state, emergency_stopped, color_check_timer
-    print("Starting line following")
+    global current_state, emergency_stopped
 
     distance = get_distance()
     if not distance:
         pass
     elif distance < DISTANCE_OF_BLACK_LINE_FROM_WALL:
-        drift_left()
-    elif distance > DISTANCE_OF_BLACK_LINE_FROM_WALL:
+        #print(f"Distance: {distance}. Drifting right")
         drift_right()
+    elif distance > DISTANCE_OF_BLACK_LINE_FROM_WALL:
+        #print(f"Distance: {distance}. Drifting left")
+        drift_left()
 
-    color_check_timer += 0.05
-    if color_check_timer >= COLOR_CHECK_INTERVAL:
-        if not COLOR_SENSOR.set_mode("id"):
-            print("Could not switch color sensor to id mode. continuing")
-            return
-        color_check_timer = 0
+    if detect_orange():
+        if packages_delivered < 2:
+            print("Orange detected - Doorway")
+           # current_state = State.CHECKING_DOORWAY
+        else:
+            print("Orange detected - Mission already complete")
+            #current_state = State.CHECKING_DOORWAY
 
-        if detect_orange():
+    elif detect_black():
+        print("Black detected - Corner or mail room")
+        #turn_left()  # turn 90 degrees ccw
+        if not get_distance():  # error handling
+            pass
+        elif get_distance() < DISTANCE_OF_BLACK_LINE_FROM_WALL + 5:
+            print("It's a corner!")
+            # to add: turn the corner on the outer boundary if this is the case
+        else:
+            print("It's the mail room!")
             if packages_delivered < 2:
-                print("Orange detected - Doorway")
-                current_state = State.CHECKING_DOORWAY
+                print("Not ready yet...")
+                #turn_right()  # this rotates it back to state that it was before
+                # correction for infinite loop
+                #move_forward()
+                sleep(0.5)
             else:
-                print("Orange detected - Mission already complete")
-                current_state = State.CHECKING_DOORWAY
+                print("Go to the mail room!")
+                #current_state = State.MISSION_COMPLETE  # to change
 
-        elif detect_black():
-            print("Black detected - Corner or mail room")
-            turn_left()  # turn 90 degrees ccw
-            if not get_distance():  # error handling
-                pass
-            elif get_distance() < DISTANCE_OF_BLACK_LINE_FROM_WALL + 5:
-                print("It's a corner!")
-                # to add: turn the corner on the outer boundary if this is the case
-            else:
-                print("It's the mail room!")
-                if packages_delivered < 2:
-                    print("Not ready yet...")
-                    turn_right()  # this rotates it back to state that it was before
-                    # correction for infinite loop
-                    move_forward()
-                    sleep(0.5)
-                else:
-                    print("Go to the mail room!")
-                    current_state = State.MISSION_COMPLETE  # to change
+    elif detect_red():
+        print("Red detected - Restricted")
+        # current_state = State.AVOIDING_RESTRICTED
 
-        elif detect_red():
-            print("Red detected - Restricted")
+    elif detect_blue():
+        if packages_delivered >= 2:
+            print("Blue detected - Entering")
+            # current_state = State.MAIL_ROOM_FOUND
+        else:
+            print("Blue detected - Mission not yet complete")
             # current_state = State.AVOIDING_RESTRICTED
-
-        elif detect_blue():
-            if packages_delivered >= 2:
-                print("Blue detected - Entering")
-                # current_state = State.MAIL_ROOM_FOUND
-            else:
-                print("Blue detected - Mission not yet complete")
-                # current_state = State.AVOIDING_RESTRICTED
 
     sleep(0.05)
 
-    stop_movement()
-    print("Stopping line following")
 
 # ============= ROOM OPERATIONS =============
 
@@ -338,7 +329,8 @@ def checking_doorway():
 def state_machine():
     """Main state machine for robot behavior"""
     global current_state, emergency_stopped
-    while not emergency_stopped():
+    sleep(3)
+    while not emergency_stopped:
         if current_state == State.FOLLOWING_LINE:
             follow_line()
 

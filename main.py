@@ -37,7 +37,8 @@ LINE_CORRECTION = 20
 MAP_LENGTH = 1200  # 1200cm map length
 HALFWAY_DOWN_MAP = 1200 / 2  # cm
 QUARTER_DOWN_MAP = 1200 / 4  # cm
-DISTANCE_OF_BLACK_LINE_FROM_WALL = 5  # cm
+#DISTANCE_OF_BLACK_LINE_FROM_WALL = 5  # cm
+wall_target_distance=None
 
 # sounds
 DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
@@ -136,7 +137,7 @@ def turn_around():
 def get_distance():
     """Gets the distance measured by the US sensor"""
     dist = ULTRASONIC_SENSOR.get_cm()
-    return dist if dist is not None else 999
+    return dist
 
 # ============= COLOR DETECTION =============
 
@@ -187,20 +188,28 @@ def detect_orange():
 def follow_line():
     """Follows the black line and detects colour changes for doors etc"""
     global current_state, emergency_stopped
+    global wall_target_distance
 
     distance = get_distance()
-    if not distance:
-        pass
-    elif distance > 100:
-        pass
-    elif distance < DISTANCE_OF_BLACK_LINE_FROM_WALL:
-        print(f"Distance: {distance}. Drifting right")
-        drift_left()
-        sleep(0.1)
-    elif distance > DISTANCE_OF_BLACK_LINE_FROM_WALL:
-        print(f"Distance: {distance}. Drifting left")
-        drift_right()
-        sleep(0.1)
+    if wall_target_distance is None:
+        if distance is not None:
+            wall_target_distance=distance
+            print(f"Locked Wall target distance at {wall_target_distance} cm")
+            move_forward()
+
+    else:
+        if distance is None:
+            pass
+        elif distance > 100:
+            pass
+        elif distance < wall_target_distance:
+            print(f"Distance: {distance}. Drifting right")
+            drift_left()
+            sleep(0.1)
+        elif distance > wall_target_distance:
+           print(f"Distance: {distance}. Drifting left")
+           drift_right()
+           sleep(0.1)
 
     if detect_orange():
         if packages_delivered < 2:
@@ -267,7 +276,6 @@ def return_to_mailroom():
 
 # ============= EMERGENCY STOP =============
 
-
 def emergency_stop():
     global emergency_stopped
     while not emergency_stopped:
@@ -275,7 +283,6 @@ def emergency_stop():
             emergency_stopped = True
             print("Emergency stop activated")
             sleep(0.1)
-
 
 # ============= CHECKING DOORWAY ===========
 

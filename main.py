@@ -59,7 +59,6 @@ ORIENT_TO_DEG = RB / RW
 class State(Enum):
     FOLLOWING_LINE = "FOLLOWING_LINE"
     CHECKING_DOORWAY = "CHECKING_DOORWAY"
-    # AVOIDING_RESTRICTED = "AVOIDING_RESTRICTED"
     ENTERING_ROOM = "ENTERING_ROOM"
     SCANNING_ROOM = "SCANNING_ROOM"
     DELIVERING = "DELIVERING"
@@ -71,6 +70,18 @@ emergency_stopped = False
 color_check_timer = 0
 packages_delivered = 0
 current_state = State.FOLLOWING_LINE
+
+# this can be set when we first start following the wall, its used so the robot maintains that distance from the wall
+# when in the straight line following state
+wall_target_distance = None
+WALL_TOLERANCE = 1.0
+LOOP_DT = 0.05  # control loop period
+# cm: below this = “corner wall”, above this = “open branch”
+CORNER_WALL_THRESHOLD = 20.0
+
+consecutive_bad_us = 0   # counts how many loops in a row US is invalid
+BAD_US_LIMIT = 10        # after 10*0.05 = 0.5s of bad readings, we react
+
 # ============= UTILITY FUNCTIONS =============
 
 
@@ -120,7 +131,7 @@ def drift_left():
 
 
 def turn_right():
-    print("Turning left")
+    print("Turning right")
     turn(90)
 
 
@@ -137,7 +148,7 @@ def turn_around():
 def get_distance():
     """Gets the distance measured by the US sensor"""
     dist = ULTRASONIC_SENSOR.get_cm()
-    return dist if dist is not None else 999
+    return dist
 
 # ============= COLOR DETECTION =============
 
@@ -165,90 +176,154 @@ def detect_yellow():
 
 def detect_blue():
     """Detect blue tile (mail room)"""
-    return get_color_name.lower() == "blue"
+    return get_color_name().lower() == "blue"
 
 
 def detect_green():
     """Detect green sticker (recipient present)"""
-    return get_color_name.lower() == "green"
+    return get_color_name().lower() == "green"
 
 
 def detect_red():
     """Detect red sticker (restricted area)"""
-    return get_color_name.lower() == "red"
+    return get_color_name().lower() == "red"
 
 
 def detect_orange():
     """Detect orange doorway"""
-    return get_color_name.lower() == "orange"
+    return get_color_name().lower() == "orange"
 
 # ============= LINE FOLLOWING =============
 
 
 def follow_line():
-    """Follows the black line and detects colour changes for doors etc"""
-    global current_state, emergency_stopped, color_check_timer
+    """
+    Moving straight along the outer boundary using ONLY the ultrasonic sensor
+    to maintain a constant distance from the wall. The color sensor is used
+    only to detect events (doorways,corners,mail room,etc)
+    """
+
+    global current_state, emergency_stopped
+    global color_check_timer, wall_target_distance, consecutive_bad_us
+
+    if emergency_stopped:
+        stop_movement()
+        return
+
     print("Starting line following")
+    d = get_distance()
 
-    distance = get_distance()
-    if not distance:
-        pass
-    elif distance < DISTANCE_OF_BLACK_LINE_FROM_WALL:
-        drift_left()
-    elif distance > DISTANCE_OF_BLACK_LINE_FROM_WALL:
-        drift_right()
+    if wall_target_distance is None:
+        if d is not None:
+            wall_target_distance = d
+            print(
+                f"Locked wall target distance at {wall_target_distance:.1f} cm")
+        move_forward()
+    else:
+        if d is None:
+            consecutive_bad_us += 1
+            if consecutive_bad_us < BAD_US_LIMIT:
+                move_forward()
+            else:
+                if consecutive_bad_us == BAD_US_LIMIT:
+                    print(
+                        "Ultrasonic lost for too long - stopping to avoid drifting blindly.")
+                stop_movement()
 
-    color_check_timer += 0.05
+        else:
+            consecutive_bad_us = 0
+
+            error = d-wall_target_distance
+
+            if error > WALL_TOLERANCE:
+                # Too far from outer wall -> drift TOWARD the wall
+                drift_right()
+            elif error < -WALL_TOLERANCE:
+                # Too close to wall -> drift AWAY from wall
+                drift_left()
+            else:
+                # Within tolerance -> go straight
+                move_forward()
+
+    color_check_timer += LOOP_DT
     if color_check_timer >= COLOR_CHECK_INTERVAL:
-        if not COLOR_SENSOR.set_mode("id"):
-            print("Could not switch color sensor to id mode. continuing")
-            return
         color_check_timer = 0
 
-        if detect_orange():
-            if packages_delivered < 2:
+        if not COLOR_SENSOR.set_mode("id"):
+            print("Could not switch color sensor to id mode. Continuing.")
+        else:
+            color_name = get_color_name().lower()
+            # print(f"Color seen: {color_name}")  # debug if needed
+
+            # a) ORANGE = DOORWAY
+            if color_name == "orange":
                 print("Orange detected - Doorway")
                 current_state = State.CHECKING_DOORWAY
-            else:
-                print("Orange detected - Mission already complete")
-                current_state = State.CHECKING_DOORWAY
 
-        elif detect_black():
-            print("Black detected - Corner or mail room")
-            turn_left()  # turn 90 degrees ccw
-            if not get_distance():  # error handling
-                pass
-            elif get_distance() < DISTANCE_OF_BLACK_LINE_FROM_WALL + 5:
-                print("It's a corner!")
-                # to add: turn the corner on the outer boundary if this is the case
-            else:
-                print("It's the mail room!")
-                if packages_delivered < 2:
-                    print("Not ready yet...")
-                    turn_right()  # this rotates it back to state that it was before
-                    # correction for infinite loop
-                    move_forward()
-                    sleep(0.5)
+            # b) BLACK on the side = could be corner or mail room branch
+            elif color_name == "black":
+                print("Black detected - Corner or mail room branch")
+                _handle_black_junction()
+
+            # c) BLUE = mail room tile under the sensor
+            elif color_name == "blue":
+                if packages_delivered >= 2:
+                    print("Blue detected - Mail room and mission complete -> enter")
+                    # You can refine this later (ENTERING_ROOM / MAIL_ROOM_FOUND)
+                    current_state = State.MISSION_COMPLETE
                 else:
-                    print("Go to the mail room!")
-                    current_state = State.MISSION_COMPLETE  # to change
+                    print(
+                        "Blue detected but not all packages delivered. Ignoring and continuing.")
 
-        elif detect_red():
-            print("Red detected - Restricted")
-            # current_state = State.AVOIDING_RESTRICTED
+            # red/green will be handled later once above works
 
-        elif detect_blue():
-            if packages_delivered >= 2:
-                print("Blue detected - Entering")
-                # current_state = State.MAIL_ROOM_FOUND
-            else:
-                print("Blue detected - Mission not yet complete")
-                # current_state = State.AVOIDING_RESTRICTED
+    sleep(LOOP_DT)
+    # IMPORTANT: do NOT stop the motors here.
+    # state_machine() will keep calling follow_line() while we're in FOLLOWING_LINE.
 
-    sleep(0.05)
+
+def _handle_black_junction():
+    """
+    Called from follow_line when the side color sensor sees black.
+    Implements the 'intermediate state' logic:
+    - Turn 90° CCW so color sensor is on the branch line and US faces 'turning wall'.
+    - Use US reading to distinguish corner vs mail room branch.
+    """
+    global wall_target_distance, packages_delivered, current_state
 
     stop_movement()
-    print("Stopping line following")
+    print("Handling black junction: rotating 90° CCW")
+    turn_left()   # CCW so color sensor is over the branch line, US faces the new wall
+    sleep(0.2)
+
+    d = get_distance()
+    if d is None:
+        # Fail-safe: if we can't see a wall, treat it as a corner to keep behavior sane
+        print("No ultrasonic reading after turn. Treating as corner (fail-safe).")
+        wall_target_distance = None   # reacquire next time
+        return
+
+    print(f"Distance to turning wall after CCW turn: {d:.1f} cm")
+
+    if d < CORNER_WALL_THRESHOLD:
+        # There's a wall close by -> just an outer CORNER
+        print("Close wall -> this is a CORNER on the outer boundary.")
+        wall_target_distance = d   # new wall distance along the new direction
+        # We remain in FOLLOWING_LINE; no state change needed.
+    else:
+        # Open space instead of a close wall -> this is the MAIL ROOM corridor
+        print("No close wall -> this is a MAIL ROOM branch.")
+        if packages_delivered < 2:
+            print(
+                "Not ready for mail room (packages_delivered < 2). Returning to corridor.")
+            # Undo the 90° CCW to go back to following the main boundary
+            turn_right()
+            wall_target_distance = None   # reacquire original wall distance next loop
+        else:
+            print("All packages delivered. Proceeding into mail room branch.")
+            # You can refine which state to go to (ENTERING_ROOM / MAIL_ROOM_FOUND)
+            current_state = State.ENTERING_ROOM
+
 
 # ============= ROOM OPERATIONS =============
 
@@ -275,7 +350,7 @@ def return_to_mailroom():
 
 def emergency_stop():
     global emergency_stopped
-    while not emergency_stopped:
+    while emergency_stopped == False:
         if TOUCH_SENSOR.is_pressed():
             emergency_stopped = True
             print("Emergency stop activated")
@@ -301,7 +376,7 @@ def checking_doorway():
     elapsed = 0.0
     saw_red = False
 
-    while elapsed < HALF_DOOR_TIME and not emergency_stopped:
+    while elapsed < HALF_DOOR_TIME and emergency_stopped == False:
         if not COLOR_SENSOR.set_mode("id"):
             print("Could not switch color sensor to id mode in checking_doorway")
         else:
@@ -338,16 +413,12 @@ def checking_doorway():
 def state_machine():
     """Main state machine for robot behavior"""
     global current_state, emergency_stopped
-    while not emergency_stopped():
+    while not emergency_stopped:
         if current_state == State.FOLLOWING_LINE:
             follow_line()
 
         elif current_state == State.CHECKING_DOORWAY:
-            pass
-
-        elif current_state == State.AVOIDING_RESTRICTED:
-            avoid_restricted()
-            current_state = State.FOLLOWING_LINE
+            checking_doorway()
 
         elif current_state == State.ENTERING_ROOM:
             pass
@@ -361,8 +432,8 @@ def state_machine():
         elif current_state == State.EXITING_ROOM:
             pass
 
-        elif current_state == State.MAIL_ROOM_FOUND:
-            pass
+        # elif current_state == State.MAIL_ROOM_FOUND:
+            # pass
 
         elif current_state == State.MISSION_COMPLETE:
             pass

@@ -1,5 +1,5 @@
 from threading import Thread
-from time import sleep
+from time import sleep, time
 from enum import Enum
 from utils.sound import Sound
 from utils.brick import (
@@ -71,8 +71,16 @@ class State(Enum):
 emergency_stopped = False
 color_check_timer = 0
 packages_delivered = 0
+detect_black_timer = 0
 current_state = State.FOLLOWING_LINE
 # ============= UTILITY FUNCTIONS =============
+
+def been_awhile():
+    global detect_black_timer
+    # First time: allow handling immediately
+    #if detect_black_timer == 0:
+        #return True
+    return (time.time() - detect_black_timer) > 10
 
 
 def stop_movement():
@@ -112,7 +120,7 @@ def turn(angle):
 
 def turn_left():
     print("Turning left")
-    turn(-90)
+    turn(-270)
 
 
 def drift_left():
@@ -121,8 +129,8 @@ def drift_left():
 
 
 def turn_right():
-    print("Turning left")
-    turn(90)
+    print("Turning right")
+    turn(270)
 
 
 def drift_right():
@@ -220,7 +228,7 @@ def follow_line():
             print("Orange detected - Mission already complete")
             # current_state = State.CHECKING_DOORWAY
 
-    elif detect_black():
+    elif detect_black() and been_awhile():
         print("Black detected - Corner or mail room")
         _handle_black_junction()
 
@@ -264,11 +272,12 @@ def _handle_black_junction():
     - Turn 90° CCW so color sensor is on the branch line and US faces 'turning wall'.
     - Use US reading to distinguish corner vs mail room branch.
     """
-    global wall_target_distance, packages_delivered, current_state
+    global wall_target_distance, packages_delivered, current_state, detect_black_timer
 
+    detect_black_timer = time.time()
     stop_movement()
-    print("Handling black junction: rotating 90° CCW")
-    turn_left()   # CCW so color sensor is over the branch line, US faces the new wall
+    print("Handling black junction: rotating 90° CW")
+    turn_right()   # CCW so color sensor is over the branch line, US faces the new wall
     sleep(0.2)
 
     d = get_distance()

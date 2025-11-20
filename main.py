@@ -224,7 +224,7 @@ def follow_line():
         #turn_left()  # turn 90 degrees ccw
         if not get_distance():  # error handling
             pass
-        elif get_distance() < DISTANCE_OF_BLACK_LINE_FROM_WALL + 5:
+        elif get_distance() < wall_target_distance + 5:
             print("It's a corner!")
             # to add: turn the corner on the outer boundary if this is the case
         else:

@@ -37,8 +37,9 @@ LINE_CORRECTION = 20
 MAP_LENGTH = 1200  # 1200cm map length
 HALFWAY_DOWN_MAP = 1200 / 2  # cm
 QUARTER_DOWN_MAP = 1200 / 4  # cm
-#DISTANCE_OF_BLACK_LINE_FROM_WALL = 5  # cm
-wall_target_distance=None
+# DISTANCE_OF_BLACK_LINE_FROM_WALL = 5  # cm
+wall_target_distance = None
+CORNER_WALL_THRESHOLD = 20
 
 # sounds
 DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
@@ -193,7 +194,7 @@ def follow_line():
     distance = get_distance()
     if wall_target_distance is None:
         if distance is not None:
-            wall_target_distance=distance
+            wall_target_distance = distance
             print(f"Locked Wall target distance at {wall_target_distance} cm")
             move_forward()
 
@@ -207,21 +208,23 @@ def follow_line():
             drift_left()
             sleep(0.1)
         elif distance > wall_target_distance:
-           print(f"Distance: {distance}. Drifting left")
-           drift_right()
-           sleep(0.1)
+            print(f"Distance: {distance}. Drifting left")
+            drift_right()
+            sleep(0.1)
 
     if detect_orange():
         if packages_delivered < 2:
             print("Orange detected - Doorway")
-           # current_state = State.CHECKING_DOORWAY
+            # current_state = State.CHECKING_DOORWAY
         else:
             print("Orange detected - Mission already complete")
-            #current_state = State.CHECKING_DOORWAY
+            # current_state = State.CHECKING_DOORWAY
 
     elif detect_black():
         print("Black detected - Corner or mail room")
-        #turn_left()  # turn 90 degrees ccw
+        _handle_black_junction()
+
+        """#turn_left()  # turn 90 degrees ccw
         if not get_distance():  # error handling
             pass
         elif get_distance() < wall_target_distance + 5:
@@ -238,7 +241,7 @@ def follow_line():
             else:
                 print("Go to the mail room!")
                 #current_state = State.MISSION_COMPLETE  # to change
-
+        """
     elif detect_red():
         print("Red detected - Restricted")
         # current_state = State.AVOIDING_RESTRICTED
@@ -252,6 +255,49 @@ def follow_line():
             # current_state = State.AVOIDING_RESTRICTED
 
     sleep(0.05)
+
+
+def _handle_black_junction():
+    """
+    Called from follow_line when the side color sensor sees black.
+    Implements the 'intermediate state' logic:
+    - Turn 90° CCW so color sensor is on the branch line and US faces 'turning wall'.
+    - Use US reading to distinguish corner vs mail room branch.
+    """
+    global wall_target_distance, packages_delivered, current_state
+
+    stop_movement()
+    print("Handling black junction: rotating 90° CCW")
+    turn_left()   # CCW so color sensor is over the branch line, US faces the new wall
+    sleep(0.2)
+
+    d = get_distance()
+    if d is None:
+        # Fail-safe: if we can't see a wall, treat it as a corner to keep behavior sane
+        print("No ultrasonic reading after turn. Treating as corner (fail-safe).")
+        wall_target_distance = None   # reacquire next time
+        return
+
+    print(f"Distance to turning wall after CCW turn: {d:.1f} cm")
+
+    if d < CORNER_WALL_THRESHOLD:
+        # There's a wall close by -> just an outer CORNER
+        print("Close wall -> this is a CORNER on the outer boundary.")
+        # wall_target_distance = d   # new wall distance along the new direction
+        # We remain in FOLLOWING_LINE; no state change needed.
+    else:
+        # Open space instead of a close wall -> this is the MAIL ROOM corridor
+        print("No close wall -> this is a MAIL ROOM branch.")
+        if packages_delivered < 2:
+            print(
+                "Not ready for mail room (packages_delivered < 2). Returning to corridor.")
+            # Undo the 90° CCW to go back to following the main boundary
+            turn_right()
+            # wall_target_distance = None   # reacquire original wall distance next loop
+        else:
+            print("All packages delivered. Proceeding into mail room branch.")
+            # You can refine which state to go to (ENTERING_ROOM / MAIL_ROOM_FOUND)
+            current_state = State.ENTERING_ROOM
 
 
 # ============= ROOM OPERATIONS =============
@@ -276,6 +322,7 @@ def return_to_mailroom():
 
 # ============= EMERGENCY STOP =============
 
+
 def emergency_stop():
     global emergency_stopped
     while not emergency_stopped:
@@ -287,6 +334,8 @@ def emergency_stop():
 # ============= CHECKING DOORWAY ===========
 
 # this state encapsulates checking the doorway once orange is detected
+
+
 def checking_doorway():
 
     global current_state, emergency_stopped

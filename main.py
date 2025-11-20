@@ -99,7 +99,7 @@ def turn(angle):
     MOTOR_L.set_limits(dps=SPEED)
     MOTOR_R.set_limits(dps=SPEED)
     sleep(0.25)
-    if angle < 0:  # left
+    if angle > 0:  # left
         MOTOR_L.set_position_relative(-int(angle * ORIENT_TO_DEG))
         MOTOR_R.set_position_relative(int(angle * ORIENT_TO_DEG))
     else:  # right
@@ -293,7 +293,23 @@ def _handle_black_junction():
                 "Not ready for mail room (packages_delivered < 2). Returning to corridor.")
             # Undo the 90° CCW to go back to following the main boundary
             turn_right()
-            # wall_target_distance = None   # reacquire original wall distance next loop
+            wall_target_distance = None   # reacquire original wall distance next loop
+            move_forward()
+
+            elapsed = 0.0
+            STEP = 0.05
+            MAX_STEP_TIME = 1.0  # safety timeout, tune if needed
+
+            # Drive until we are no longer on black (or we time out / emergency stop)
+            while detect_black() and elapsed < MAX_STEP_TIME and not emergency_stopped:
+                sleep(STEP)
+                elapsed += STEP
+
+            stop_movement()
+            # At this point, the color sensor should be off the black patch,
+            # so follow_line() won't immediately call _handle_black_junction() again.
+            return
+        
         else:
             print("All packages delivered. Proceeding into mail room branch.")
             # You can refine which state to go to (ENTERING_ROOM / MAIL_ROOM_FOUND)

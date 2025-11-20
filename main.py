@@ -191,12 +191,16 @@ def follow_line():
     distance = get_distance()
     if not distance:
         pass
+    elif distance > 100:
+        pass
     elif distance < DISTANCE_OF_BLACK_LINE_FROM_WALL:
-        #print(f"Distance: {distance}. Drifting right")
-        drift_right()
-    elif distance > DISTANCE_OF_BLACK_LINE_FROM_WALL:
-        #print(f"Distance: {distance}. Drifting left")
+        print(f"Distance: {distance}. Drifting right")
         drift_left()
+        sleep(0.1)
+    elif distance > DISTANCE_OF_BLACK_LINE_FROM_WALL:
+        print(f"Distance: {distance}. Drifting left")
+        drift_right()
+        sleep(0.1)
 
     if detect_orange():
         if packages_delivered < 2:

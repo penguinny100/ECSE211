@@ -78,9 +78,9 @@ current_state = State.FOLLOWING_LINE
 def been_awhile():
     global detect_black_timer
     # First time: allow handling immediately
-    #if detect_black_timer == 0:
-        #return True
-    return (time.time() - detect_black_timer) > 10
+    if detect_black_timer == 0:
+        return True
+    return (time() - detect_black_timer) > 4
 
 
 def stop_movement():
@@ -107,12 +107,12 @@ def turn(angle):
     MOTOR_L.set_limits(dps=SPEED)
     MOTOR_R.set_limits(dps=SPEED)
     sleep(0.25)
-    if angle > 0:  # left
+    if angle < 0:  # left
         MOTOR_L.set_position_relative(-int(angle * ORIENT_TO_DEG))
         MOTOR_R.set_position_relative(int(angle * ORIENT_TO_DEG))
     else:  # right
-        MOTOR_L.set_position_relative(int(angle * ORIENT_TO_DEG))
-        MOTOR_R.set_position_relative(-int(angle * ORIENT_TO_DEG))
+        MOTOR_L.set_position_relative(-int(angle * ORIENT_TO_DEG))
+        MOTOR_R.set_position_relative(int(angle * ORIENT_TO_DEG))
     sleep(abs(angle) / 90.0 * 0.5)
     stop_movement()
     sleep(0.2)
@@ -120,7 +120,7 @@ def turn(angle):
 
 def turn_left():
     print("Turning left")
-    turn(-270)
+    turn(-225)
 
 
 def drift_left():
@@ -130,7 +130,7 @@ def drift_left():
 
 def turn_right():
     print("Turning right")
-    turn(270)
+    turn(225)
 
 
 def drift_right():
@@ -274,7 +274,7 @@ def _handle_black_junction():
     """
     global wall_target_distance, packages_delivered, current_state, detect_black_timer
 
-    detect_black_timer = time.time()
+    detect_black_timer = time()
     stop_movement()
     print("Handling black junction: rotating 90° CW")
     turn_right()   # CCW so color sensor is over the branch line, US faces the new wall
@@ -301,7 +301,7 @@ def _handle_black_junction():
             print(
                 "Not ready for mail room (packages_delivered < 2). Returning to corridor.")
             # Undo the 90° CCW to go back to following the main boundary
-            turn_right()
+            turn_left()
             wall_target_distance = None   # reacquire original wall distance next loop
             move_forward()
 
@@ -416,6 +416,7 @@ def state_machine():
     global current_state, emergency_stopped
     sleep(3)
     while not emergency_stopped:
+        
         if current_state == State.FOLLOWING_LINE:
             follow_line()
 

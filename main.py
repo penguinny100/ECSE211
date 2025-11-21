@@ -56,6 +56,11 @@ RB = 5  # radius of turning circle
 RW = 2  # wheel radius
 ORIENT_TO_DEG = RB / RW
 
+SWEEP_DEG = 60        # how far left/right from center
+DPS = 180             # faster than 90
+POWER = 60            # give torque
+
+
 # states
 
 
@@ -76,6 +81,7 @@ packages_delivered = 0
 detect_black_timer = 0
 current_state = State.FOLLOWING_LINE
 # ============= UTILITY FUNCTIONS =============
+
 
 def been_awhile():
     global detect_black_timer
@@ -150,11 +156,12 @@ def get_distance():
     dist = ULTRASONIC_SENSOR.get_cm()
     return dist
 
-def oscillate_color_sensor():
-    """
+
+"""def oscillate_color_sensor():
+    
     Oscillates the color sensor left-right using Motor B.
     Runs in a separate thread.
-    """
+    
     global oscillating, emergency_stopped
 
     if oscillating:
@@ -188,6 +195,50 @@ def oscillate_color_sensor():
 def stop_oscillating_sensor():
     global oscillating
     oscillating = False
+
+    """
+
+
+def oscillate_color_sensor():
+    """
+    Oscillates the color sensor left-right using Motor B.
+    Runs in a separate thread.
+    """
+    global oscillating, emergency_stopped
+
+    if oscillating:
+        return  # already running
+
+    oscillating = True
+
+    def _osc():
+        global oscillating
+
+        # start from a known reference
+        MOTOR_SENSOR.reset_encoder()
+        MOTOR_SENSOR.set_limits(dps=DPS, power=POWER)
+
+        direction = 1  # 1 => right, -1 => left
+
+        while oscillating and not emergency_stopped:
+            # go to the next target angle relative to wherever we are
+            target = direction * SWEEP_DEG
+
+            MOTOR_SENSOR.set_position_relative(target)
+            MOTOR_SENSOR.set_dps(DPS)
+
+            # wait until it mostly finishes the move
+            # (adjust threshold if your motor reports different)
+            while (oscillating and not emergency_stopped
+                   and abs(MOTOR_SENSOR.get_dps()) > 5):
+                sleep(0.01)
+
+            direction *= -1  # flip side
+
+        MOTOR_SENSOR.set_dps(0)
+        oscillating = False  # IMPORTANT: allow restart later
+
+    Thread(target=_osc, daemon=True).start()
 
 # ============= COLOR DETECTION =============
 
@@ -253,11 +304,11 @@ def follow_line():
         elif distance > 100:
             pass
         elif distance < wall_target_distance:
-            #print(f"Distance: {distance}. Drifting right")
+            # print(f"Distance: {distance}. Drifting right")
             drift_left()
             sleep(0.1)
         elif distance > wall_target_distance:
-            #print(f"Distance: {distance}. Drifting left")
+            # print(f"Distance: {distance}. Drifting left")
             drift_right()
             sleep(0.1)
 
@@ -358,7 +409,7 @@ def _handle_black_junction():
             # At this point, the color sensor should be off the black patch,
             # so follow_line() won't immediately call _handle_black_junction() again.
             return
-        
+
         else:
             print("All packages delivered. Proceeding into mail room branch.")
             # You can refine which state to go to (ENTERING_ROOM / MAIL_ROOM_FOUND)
@@ -464,7 +515,6 @@ def enter_room():
         sleep(2)
         turn_left()
         current_state = State.FOLLOWING_LINE
-        
 
 
 # ============= STATE MACHINE =============
@@ -474,7 +524,7 @@ def state_machine():
     global current_state, emergency_stopped
     sleep(5)
     while not emergency_stopped:
-        
+
         if current_state == State.FOLLOWING_LINE:
             follow_line()
 

@@ -163,24 +163,25 @@ def oscillate_color_sensor():
     oscillating = True
 
     def _osc():
-        left_angle = -180
-        right_angle = 180
+        left_speed = -90
+        right_speed = 90
         MOTOR_SENSOR.set_limits(dps=90)
 
-        target = right_angle
+        speed = right_speed
+        last_switch = time()
 
         while oscillating and not emergency_stopped:
-            MOTOR_SENSOR.set_position_relative(target)
-            # wait for movement to finish
-            sleep(0.5)
+            MOTOR_SENSOR.set_dps(speed)
 
-            # flip direction
-            target = left_angle if target == right_angle else right_angle
+            # switch every 0.5s
+            if time() - last_switch > 0.5:
+                speed = left_speed if speed == right_speed else right_speed
+                last_switch = time()
 
-            sleep(0.05)
+            sleep(0.02)
 
-        # stop motor when oscillation is turned off
         MOTOR_SENSOR.set_dps(0)
+
 
     Thread(target=_osc, daemon=True).start()
 
@@ -411,7 +412,7 @@ def checking_doorway():
     MOTOR_R.set_dps(SPEED / 2)
 
     STEP = 0.05              # seconds between checks
-    HALF_DOOR_TIME = 1     # current hardcode assumption of 0.5 seconds to get halfway
+    HALF_DOOR_TIME = 3     # current hardcode assumption of 0.5 seconds to get halfway
 
     elapsed = 0.0
     saw_red = False
@@ -433,6 +434,7 @@ def checking_doorway():
 
     if saw_red:
         # We hit a restricted doorway: go back to following line.
+        print("Saw red. Ignoring doorway")
         move_forward()
         sleep(0.5)   # tune: just enough to pass the doorway
         stop_movement()
@@ -441,6 +443,7 @@ def checking_doorway():
     else:
         # No red seen by halfway: safe doorway, enter the room.
         print("Doorway clear (no red) -> entering room.")
+        turn_right()
         current_state = State.ENTERING_ROOM
 
     return
@@ -449,7 +452,6 @@ def checking_doorway():
 # ============= ROOM ENTERING AND SCANNING =============
 def enter_room():
     global current_state
-    turn_right()
     oscillate_color_sensor()
 
     MOTOR_L.set_dps(SPEED / 4)
@@ -458,10 +460,10 @@ def enter_room():
     if detect_green():
         stop_oscillating_sensor()
         drop_package()
-    move_backward()
-    sleep(2)
-    turn_left()
-    current_state = State.FOLLOWING_LINE
+        move_backward()
+        sleep(2)
+        turn_left()
+        current_state = State.FOLLOWING_LINE
         
 
 
@@ -470,7 +472,7 @@ def enter_room():
 def state_machine():
     """Main state machine for robot behavior"""
     global current_state, emergency_stopped
-    sleep(3)
+    sleep(5)
     while not emergency_stopped:
         
         if current_state == State.FOLLOWING_LINE:

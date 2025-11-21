@@ -436,12 +436,72 @@ DEBUG = True
 # don't know if working
 
 
-
 def sensor_sweep_left():
-    MOTOR_SENSOR.set_position(-180)
+    return sweep_to(-180)
+
 
 def sensor_sweep_right():
-    MOTOR_SENSOR.set_position(180)
+    return sweep_to(180)
+
+
+def watch_for_green(stop_flag, poll_dt=0.02):
+    """
+    Runs in a separate thread. Continuously checks the color sensor.
+    If green appears, sets flag and stops the sensor motor.
+    """
+    while not stop_flag["stop"]:
+        color = get_color_name()
+        if color == "green":
+            stop_flag["green"] = True
+            try:
+                MOTOR_SENSOR.set_dps(0)   # or MOTOR_SENSOR.stop()
+            except:
+                pass
+
+             # stop the robot drive IMMEDIATELY
+            try:
+                stop_movement()          # your existing helper
+            except:
+                pass
+
+            return
+        sleep(poll_dt)
+
+
+def sweep_to(target_deg, dps=SWEEP_DPS, tol=3):
+    """
+    Sweep the sensor motor to target_deg while watchdog checks color.
+    Returns True if green was detected during sweep, else False.
+    """
+
+    stop_flag = {"stop": False, "green": False}
+
+    # start watchdog thread
+    t = Thread(target=watch_for_green, args=(stop_flag,))
+    t.start()
+
+    # command sweep
+    MOTOR_SENSOR.set_limits(dps=dps, power=SWEEP_POWER)
+    MOTOR_SENSOR.set_position(target_deg)   # your existing move
+
+    # wait until sweep ends OR green detected
+    while not stop_flag["green"]:
+        try:
+            cur = MOTOR_SENSOR.get_position()
+        except:
+            cur = None
+
+        if cur is not None and abs(cur - target_deg) <= tol:
+            break
+
+        sleep(0.02)
+
+    # shut down watchdog
+    stop_flag["stop"] = True
+    t.join()
+
+    return stop_flag["green"]
+
 
 # move_forward_1cm working fine
 def move_forward_1cm():
@@ -460,6 +520,7 @@ def move_forward_1cm():
     if DEBUG:
         print("[STEP] Step complete.")
 
+
 # ============= ROOM ENTERING AND SCANNING =============
 enter_room_started = False
 
@@ -470,7 +531,7 @@ def enter_room():
     if not enter_room_started:
         enter_room_started = True
         if DEBUG:
-            print("\n[ENTER_ROOM] Entering ENTERING_ROOM state.Ready to scan.")
+            print("\n[ENTER_ROOM] Entering ENTERING_ROOM state. Ready to scan.")
         stop_movement()
         COLOR_SENSOR.set_mode("id")
 
@@ -482,20 +543,30 @@ def enter_room():
         if DEBUG:
             print(f"\n[ENTER_ROOM] Sweep cycle #{sweep_count}")
 
+        # Step forward a bit (only if we haven't found green yet)
         move_forward_1cm()
-        sensor_sweep_left()
-        sensor_sweep_right()
+        if emergency_stopped:
+            break
 
+        # Sweep left, checking green during the motion
+        detects_green = sensor_sweep_left()
         if DEBUG:
-            print(f"[ENTER_ROOM] Sweep result: green={detects_green}")
+            print(f"[ENTER_ROOM] After left sweep: green={detects_green}")
+        if detects_green or emergency_stopped:
+            break
 
+        # Sweep right, checking green during the motion
+        detects_green = sensor_sweep_right()
+        if DEBUG:
+            print(f"[ENTER_ROOM] After right sweep: green={detects_green}")
+
+    # --- handle success ---
     if detects_green:
         print("[ENTER_ROOM] GREEN DETECTED — dropping package.")
         stop_movement()
         enter_room_started = False
 
         drop_package()
-        park_color_sensor_right()
         move_backward()
         sleep(2)
         turn_left()

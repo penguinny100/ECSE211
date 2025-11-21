@@ -191,12 +191,12 @@ def get_distance():
 
 
     Thread(target=_osc, daemon=True).start()
+"""
+
 
 def stop_oscillating_sensor():
     global oscillating
     oscillating = False
-
-    """
 
 
 def oscillate_color_sensor():
@@ -501,20 +501,37 @@ def checking_doorway():
 
 
 # ============= ROOM ENTERING AND SCANNING =============
+enter_room_started = False
+
+
 def enter_room():
-    global current_state
+    global current_state, enter_room_started, oscillating
     oscillate_color_sensor()
 
-    MOTOR_L.set_dps(SPEED / 4)
-    MOTOR_R.set_dps(SPEED / 4)
+    if not enter_room_started:
+        enter_room_started = True
+        oscillate_color_sensor()   # start the sweep thread once
 
+        MOTOR_L.set_dps(SPEED / 4)
+        MOTOR_R.set_dps(SPEED / 4)
+
+    # keep scanning while driving slowly
     if detect_green():
         stop_oscillating_sensor()
+        enter_room_started = False  # reset for next time we ever enter room
+
+        MOTOR_L.set_dps(0)
+        MOTOR_R.set_dps(0)
+
         drop_package()
         move_backward()
         sleep(2)
         turn_left()
         current_state = State.FOLLOWING_LINE
+        return
+
+    # IMPORTANT: yield time so the oscillation thread + motors run smoothly
+    sleep(0.02)
 
 
 # ============= STATE MACHINE =============

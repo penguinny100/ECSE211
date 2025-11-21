@@ -15,8 +15,10 @@ SPEED = 180
 DRIFT = 10
 MOTOR_R = Motor("D")
 MOTOR_L = Motor("A")
+MOTOR_SENSOR = Motor("B")
 MOTOR_R.reset_encoder()
 MOTOR_L.reset_encoder()
+MOTOR_SENSOR.reset_encoder()
 
 TOUCH_SENSOR = TouchSensor("2")
 ULTRASONIC_SENSOR = EV3UltrasonicSensor("3")
@@ -60,7 +62,6 @@ ORIENT_TO_DEG = RB / RW
 class State(Enum):
     FOLLOWING_LINE = "FOLLOWING_LINE"
     CHECKING_DOORWAY = "CHECKING_DOORWAY"
-    # AVOIDING_RESTRICTED = "AVOIDING_RESTRICTED"
     ENTERING_ROOM = "ENTERING_ROOM"
     SCANNING_ROOM = "SCANNING_ROOM"
     DELIVERING = "DELIVERING"
@@ -69,6 +70,7 @@ class State(Enum):
 
 
 emergency_stopped = False
+oscillating = False
 color_check_timer = 0
 packages_delivered = 0
 detect_black_timer = 0
@@ -148,6 +150,44 @@ def get_distance():
     dist = ULTRASONIC_SENSOR.get_cm()
     return dist
 
+def oscillate_color_sensor():
+    """
+    Oscillates the color sensor left-right using Motor B.
+    Runs in a separate thread.
+    """
+    global oscillating, emergency_stopped
+
+    if oscillating:
+        return   # already running
+
+    oscillating = True
+
+    def _osc():
+        left_angle = -180
+        right_angle = 180
+        MOTOR_SENSOR.set_limits(dps=90)
+
+        target = right_angle
+
+        while oscillating and not emergency_stopped:
+            MOTOR_SENSOR.set_position_relative(target)
+            # wait for movement to finish
+            sleep(0.5)
+
+            # flip direction
+            target = left_angle if target == right_angle else right_angle
+
+            sleep(0.05)
+
+        # stop motor when oscillation is turned off
+        MOTOR_SENSOR.set_dps(0)
+
+    Thread(target=_osc, daemon=True).start()
+
+def stop_oscillating_sensor():
+    global oscillating
+    oscillating = False
+
 # ============= COLOR DETECTION =============
 
 
@@ -212,21 +252,20 @@ def follow_line():
         elif distance > 100:
             pass
         elif distance < wall_target_distance:
-            print(f"Distance: {distance}. Drifting right")
+            #print(f"Distance: {distance}. Drifting right")
             drift_left()
             sleep(0.1)
         elif distance > wall_target_distance:
-            print(f"Distance: {distance}. Drifting left")
+            #print(f"Distance: {distance}. Drifting left")
             drift_right()
             sleep(0.1)
 
     if detect_orange():
         if packages_delivered < 2:
             print("Orange detected - Doorway")
-            # current_state = State.CHECKING_DOORWAY
+            current_state = State.CHECKING_DOORWAY
         else:
             print("Orange detected - Mission already complete")
-            # current_state = State.CHECKING_DOORWAY
 
     elif detect_black() and been_awhile():
         print("Black detected - Corner or mail room")
@@ -368,11 +407,11 @@ def checking_doorway():
     print("Checking doorway for restriction...")
 
     # move forward slowly while we check
-    MOTOR_L.set_dps(SPEED)
-    MOTOR_R.set_dps(SPEED)
+    MOTOR_L.set_dps(SPEED / 2)
+    MOTOR_R.set_dps(SPEED / 2)
 
     STEP = 0.05              # seconds between checks
-    HALF_DOOR_TIME = 0.5     # current hardcode assumption of 0.5 seconds to get halfway
+    HALF_DOOR_TIME = 1     # current hardcode assumption of 0.5 seconds to get halfway
 
     elapsed = 0.0
     saw_red = False
@@ -381,8 +420,7 @@ def checking_doorway():
         if not COLOR_SENSOR.set_mode("id"):
             print("Could not switch color sensor to id mode in checking_doorway")
         else:
-            color_name = get_color_name().lower()
-            if color_name == "red":
+            if detect_red():
                 print("Red detected in doorway -> restricted room. Skipping.")
                 saw_red = True
                 break
@@ -395,8 +433,7 @@ def checking_doorway():
 
     if saw_red:
         # We hit a restricted doorway: go back to following line.
-        MOTOR_L.set_dps(SPEED)
-        MOTOR_R.set_dps(SPEED)
+        move_forward()
         sleep(0.5)   # tune: just enough to pass the doorway
         stop_movement()
         current_state = State.FOLLOWING_LINE
@@ -407,6 +444,25 @@ def checking_doorway():
         current_state = State.ENTERING_ROOM
 
     return
+
+
+# ============= ROOM ENTERING AND SCANNING =============
+def enter_room():
+    global current_state
+    turn_right()
+    oscillate_color_sensor()
+
+    MOTOR_L.set_dps(SPEED / 4)
+    MOTOR_R.set_dps(SPEED / 4)
+
+    if detect_green():
+        stop_oscillating_sensor()
+        drop_package()
+    move_backward()
+    sleep(2)
+    turn_left()
+    current_state = State.FOLLOWING_LINE
+        
 
 
 # ============= STATE MACHINE =============
@@ -421,14 +477,10 @@ def state_machine():
             follow_line()
 
         elif current_state == State.CHECKING_DOORWAY:
-            pass
-
-        elif current_state == State.AVOIDING_RESTRICTED:
-            avoid_restricted()
-            current_state = State.FOLLOWING_LINE
+            checking_doorway()
 
         elif current_state == State.ENTERING_ROOM:
-            pass
+            enter_room()
 
         elif current_state == State.SCANNING_ROOM:
             pass
@@ -437,9 +489,6 @@ def state_machine():
             pass
 
         elif current_state == State.EXITING_ROOM:
-            pass
-
-        elif current_state == State.MAIL_ROOM_FOUND:
             pass
 
         elif current_state == State.MISSION_COMPLETE:

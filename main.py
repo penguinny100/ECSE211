@@ -80,6 +80,8 @@ color_check_timer = 0
 packages_delivered = 0
 detect_black_timer = 0
 current_state = State.FOLLOWING_LINE
+
+
 # ============= UTILITY FUNCTIONS =============
 
 
@@ -156,89 +158,6 @@ def get_distance():
     dist = ULTRASONIC_SENSOR.get_cm()
     return dist
 
-
-"""def oscillate_color_sensor():
-    
-    Oscillates the color sensor left-right using Motor B.
-    Runs in a separate thread.
-    
-    global oscillating, emergency_stopped
-
-    if oscillating:
-        return   # already running
-
-    oscillating = True
-
-    def _osc():
-        left_speed = -90
-        right_speed = 90
-        MOTOR_SENSOR.set_limits(dps=90)
-
-        speed = right_speed
-        last_switch = time()
-
-        while oscillating and not emergency_stopped:
-            MOTOR_SENSOR.set_dps(speed)
-
-            # switch every 0.5s
-            if time() - last_switch > 0.5:
-                speed = left_speed if speed == right_speed else right_speed
-                last_switch = time()
-
-            sleep(0.02)
-
-        MOTOR_SENSOR.set_dps(0)
-
-
-    Thread(target=_osc, daemon=True).start()
-"""
-
-
-def stop_oscillating_sensor():
-    global oscillating
-    oscillating = False
-
-
-def oscillate_color_sensor():
-    """
-    Oscillates the color sensor left-right using Motor B.
-    Runs in a separate thread.
-    """
-    global oscillating, emergency_stopped
-
-    if oscillating:
-        return  # already running
-
-    oscillating = True
-
-    def _osc():
-        global oscillating
-
-        # start from a known reference
-        MOTOR_SENSOR.reset_encoder()
-        MOTOR_SENSOR.set_limits(dps=DPS, power=POWER)
-
-        direction = 1  # 1 => right, -1 => left
-
-        while oscillating and not emergency_stopped:
-            # go to the next target angle relative to wherever we are
-            target = direction * SWEEP_DEG
-
-            MOTOR_SENSOR.set_position_relative(target)
-            MOTOR_SENSOR.set_dps(DPS)
-
-            # wait until it mostly finishes the move
-            # (adjust threshold if your motor reports different)
-            while (oscillating and not emergency_stopped
-                   and abs(MOTOR_SENSOR.get_dps()) > 5):
-                sleep(0.01)
-
-            direction *= -1  # flip side
-
-        MOTOR_SENSOR.set_dps(0)
-        oscillating = False  # IMPORTANT: allow restart later
-
-    Thread(target=_osc, daemon=True).start()
 
 # ============= COLOR DETECTION =============
 
@@ -447,6 +366,7 @@ def emergency_stop():
             print("Emergency stop activated")
             sleep(0.1)
 
+
 # ============= CHECKING DOORWAY ===========
 
 # this state encapsulates checking the doorway once orange is detected
@@ -495,10 +415,205 @@ def checking_doorway():
         # No red seen by halfway: safe doorway, enter the room.
         print("Doorway clear (no red) -> entering room.")
         turn_right()
-        #PUT CODE HERE TO PUT COLOR SENSOR STICK TO MIDDLE
+        # PUT CODE HERE TO PUT COLOR SENSOR STICK TO MIDDLE
         current_state = State.ENTERING_ROOM
 
     return
+
+
+# ====== ENTER ROOM SCAN HELPERS (blocking, no thread) ======
+# Tune these:
+CM_STEP_TIME = 0.15     # seconds to move forward ~1 cm (TUNE on floor)
+STEP_DPS = SPEED / 4    # forward speed during the 1cm step
+
+SWEEP_DPS = 180         # sensor sweep speed
+SWEEP_POWER = 60        # sensor sweep torque
+SWEEP_HALF_DEG = 90     # +/-90 = 180° total sweep
+SENSOR_PARK_DEG = 90
+DEBUG = True
+
+
+def park_color_sensor_right():
+    """
+    Move sensor arm from center back to right parked position.
+    Assumes center is encoder 0 (same convention as center_color_sensor).
+    """
+    if DEBUG:
+        print("[PARK] Parking sensor to right… target =", SENSOR_PARK_DEG)
+
+    MOTOR_SENSOR.set_limits(dps=SWEEP_DPS, power=SWEEP_POWER)
+
+    try:
+        MOTOR_SENSOR.set_position(SENSOR_PARK_DEG)
+    except:
+        if DEBUG:
+            print("[PARK] set_position failed, using relative")
+        MOTOR_SENSOR.set_position_relative(SENSOR_PARK_DEG)
+
+    MOTOR_SENSOR.set_dps(SWEEP_DPS)
+
+    # wait until motor slows down / stops
+    while not emergency_stopped:
+        try:
+            dps = MOTOR_SENSOR.get_dps()
+            if DEBUG:
+                print(f"[PARK] dps={dps:.1f}")
+        except:
+            if DEBUG:
+                print("[PARK] get_dps not available, sleeping 0.3s")
+            sleep(0.3)
+            break
+
+        if abs(dps) <= 5:
+            break
+        sleep(0.01)
+
+    MOTOR_SENSOR.set_dps(0)
+    if DEBUG:
+        print("[PARK] Done.")
+
+
+def center_color_sensor():
+    """
+    Rotate color sensor arm to the middle/front of the robot.
+    Assumes encoder 0 = centered. If not true, adjust target.
+    """
+    if DEBUG:
+        print("[CENTER] Centering sensor (encoder reset → 0)")
+
+    MOTOR_SENSOR.set_limits(dps=SWEEP_DPS, power=SWEEP_POWER)
+    MOTOR_SENSOR.reset_encoder()
+
+    try:
+        MOTOR_SENSOR.set_position(0)
+    except:
+        if DEBUG:
+            print("[CENTER] set_position(0) not supported")
+
+    MOTOR_SENSOR.set_dps(SWEEP_DPS)
+
+    while not emergency_stopped:
+        try:
+            dps = MOTOR_SENSOR.get_dps()
+            if DEBUG:
+                print(f"[CENTER] dps={dps:.1f}")
+        except:
+            if DEBUG:
+                print("[CENTER] get_dps missing, sleeping 0.3s")
+            sleep(0.3)
+            break
+
+        if abs(dps) <= 5:
+            break
+        sleep(0.01)
+
+    MOTOR_SENSOR.set_dps(0)
+    if DEBUG:
+        print("[CENTER] Done.")
+
+
+def move_forward_1cm():
+    """
+    Move forward a tiny step (~1 cm) using time-based control.
+    """
+    if DEBUG:
+        print(
+            f"[STEP] Moving forward ~1cm (dps={STEP_DPS}, time={CM_STEP_TIME})")
+
+    MOTOR_L.set_dps(STEP_DPS)
+    MOTOR_R.set_dps(STEP_DPS)
+    sleep(CM_STEP_TIME)
+    stop_movement()
+
+    if DEBUG:
+        print("[STEP] Step complete.")
+
+
+def windshieldwiper_detect_green():
+    if DEBUG:
+        print("[SWEEP] Starting sweep… (center → right → left)")
+
+    MOTOR_SENSOR.set_limits(dps=SWEEP_DPS, power=SWEEP_POWER)
+
+    # Start centered
+    try:
+        MOTOR_SENSOR.set_position(0)
+    except:
+        pass
+    MOTOR_SENSOR.set_dps(SWEEP_DPS)
+
+    # wait for settle
+    sleep(0.2)
+
+    # --- SWEEP RIGHT ---
+    if DEBUG:
+        print("[SWEEP] Sweeping RIGHT +", SWEEP_HALF_DEG)
+
+    MOTOR_SENSOR.set_position_relative(+SWEEP_HALF_DEG)
+    MOTOR_SENSOR.set_dps(SWEEP_DPS)
+
+    while not emergency_stopped:
+        color = get_color_name()
+        dps = None
+        try:
+            dps = MOTOR_SENSOR.get_dps()
+        except:
+            pass
+
+        if DEBUG:
+            print(f"[SWEEP-R] color={color}, dps={dps}")
+
+        if detect_green():
+            if DEBUG:
+                print("[SWEEP-R] GREEN FOUND!")
+            MOTOR_SENSOR.set_dps(0)
+            return True
+
+        if dps is not None and abs(dps) <= 5:
+            break
+        sleep(0.01)
+
+    # --- SWEEP LEFT ---
+    if DEBUG:
+        print("[SWEEP] Sweeping LEFT -", 2 * SWEEP_HALF_DEG)
+
+    MOTOR_SENSOR.set_position_relative(-2 * SWEEP_HALF_DEG)
+    MOTOR_SENSOR.set_dps(SWEEP_DPS)
+
+    while not emergency_stopped:
+        color = get_color_name()
+        dps = None
+        try:
+            dps = MOTOR_SENSOR.get_dps()
+        except:
+            pass
+
+        if DEBUG:
+            print(f"[SWEEP-L] color={color}, dps={dps}")
+
+        if detect_green():
+            if DEBUG:
+                print("[SWEEP-L] GREEN FOUND!")
+            MOTOR_SENSOR.set_dps(0)
+            return True
+
+        if dps is not None and abs(dps) <= 5:
+            break
+        sleep(0.01)
+
+    # Optional re-center
+    try:
+        MOTOR_SENSOR.set_position(0)
+    except:
+        pass
+    MOTOR_SENSOR.set_dps(SWEEP_DPS)
+    sleep(0.2)
+
+    MOTOR_SENSOR.set_dps(0)
+
+    if DEBUG:
+        print("[SWEEP] No green found in full 180° sweep.")
+    return False
 
 
 # ============= ROOM ENTERING AND SCANNING =============
@@ -506,34 +621,42 @@ enter_room_started = False
 
 
 def enter_room():
-    global current_state, enter_room_started, oscillating
-    oscillate_color_sensor()
+    global current_state, enter_room_started
 
     if not enter_room_started:
         enter_room_started = True
-        oscillate_color_sensor()   # start the sweep thread once
+        if DEBUG:
+            print("\n[ENTER_ROOM] Entering ENTERING_ROOM state. Centering sensor.")
+        stop_movement()
+        COLOR_SENSOR.set_mode("id")
+        center_color_sensor()
 
-        MOTOR_L.set_dps(SPEED / 4)
-        MOTOR_R.set_dps(SPEED / 4)
+    detects_green = False
+    sweep_count = 0
 
-    # keep scanning while driving slowly
-    if detect_green():
-        stop_oscillating_sensor()
-        enter_room_started = False  # reset for next time we ever enter room
+    while not detects_green and not emergency_stopped:
+        sweep_count += 1
+        if DEBUG:
+            print(f"\n[ENTER_ROOM] Sweep cycle #{sweep_count}")
 
-        MOTOR_L.set_dps(0)
-        MOTOR_R.set_dps(0)
+        move_forward_1cm()
+        detects_green = windshieldwiper_detect_green()
+
+        if DEBUG:
+            print(f"[ENTER_ROOM] Sweep result: green={detects_green}")
+
+    if detects_green:
+        print("[ENTER_ROOM] GREEN DETECTED — dropping package.")
+        stop_movement()
+        enter_room_started = False
 
         drop_package()
+        park_color_sensor_right()
         move_backward()
         sleep(2)
         turn_left()
-        #PUT CODE HERE TO PUT COLOR SENSOR STICK BACK TO RIGHT
-        current_state = State.FOLLOWING_LINE
-        return
 
-    # IMPORTANT: yield time so the oscillation thread + motors run smoothly
-    sleep(0.02)
+        current_state = State.FOLLOWING_LINE
 
 
 # ============= STATE MACHINE =============

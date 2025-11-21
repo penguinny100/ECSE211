@@ -15,7 +15,7 @@ SPEED = 180
 DRIFT = 10
 MOTOR_R = Motor("D")
 MOTOR_L = Motor("A")
-MOTOR_SENSOR = Motor("B")
+MOTOR_SENSOR = Motor("C")
 MOTOR_R.reset_encoder()
 MOTOR_L.reset_encoder()
 MOTOR_SENSOR.reset_encoder()
@@ -44,8 +44,8 @@ wall_target_distance = None
 CORNER_WALL_THRESHOLD = 20
 
 # sounds
-DELIVERY_SOUND = Sound(duration=1, volume=80, pitch="C5")
-MISSION_COMPLETE_SOUND = Sound(duration=1, volume=80, pitch="G5")
+DELIVERY_SOUND = Sound(duration=1, volume=100, pitch="C5")
+MISSION_COMPLETE_SOUND = Sound(duration=1, volume=100, pitch="G5")
 
 
 # Note from ben to whoever's working on it today: RB is the distance between the middle of the thickness
@@ -80,6 +80,8 @@ oscillating = False
 color_check_timer = 0
 packages_delivered = 0
 detect_black_timer = 0
+sweep_timer = 0
+sweep_deg = 90
 current_state = State.FOLLOWING_LINE
 
 
@@ -424,7 +426,7 @@ def checking_doorway():
 
 # ====== ENTER ROOM SCAN HELPERS (blocking, no thread) ======
 # Tune these:
-CM_STEP_TIME = 0.15     # seconds to move forward ~1 cm (TUNE on floor)
+CM_STEP_TIME = 0.5     # seconds to move forward ~1 cm (TUNE on floor)
 STEP_DPS = SPEED / 4    # forward speed during the 1cm step
 
 SWEEP_DPS = 180        # sensor sweep speed
@@ -524,6 +526,18 @@ def move_forward_1cm():
 # ============= ROOM ENTERING AND SCANNING =============
 enter_room_started = False
 
+def enter_room_alternate():
+    MOTOR_L.set_dps(SPEED / 4)
+    MOTOR_R.set_dps(SPEED / 4)
+   # if time() - sweep_timer > 1:
+    #    sweep_timer = time()
+     #   MOTOR_SENSOR.set_dps()
+    
+    if detect_green():
+        MOTOR_SENSOR.set_dps(0)
+        drop_package()
+
+
 
 def enter_room():
     global current_state, enter_room_started
@@ -589,7 +603,7 @@ def state_machine():
             checking_doorway()
 
         elif current_state == State.ENTERING_ROOM:
-            enter_room()
+            enter_room_alternate()
 
         elif current_state == State.SCANNING_ROOM:
             pass

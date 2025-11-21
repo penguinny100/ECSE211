@@ -75,6 +75,7 @@ class State(Enum):
 
 
 emergency_stopped = False
+detects_green = False
 oscillating = False
 color_check_timer = 0
 packages_delivered = 0
@@ -435,84 +436,12 @@ DEBUG = True
 # don't know if working
 
 
-def park_color_sensor_right():
-    """
-    Move sensor arm from center back to right parked position.
-    Assumes center is encoder 0 (same convention as center_color_sensor).
-    """
-    if DEBUG:
-        print("[PARK] Parking sensor to right… target =", SENSOR_PARK_DEG)
 
-    MOTOR_SENSOR.set_limits(dps=SWEEP_DPS, power=SWEEP_POWER)
+def sensor_sweep_left():
+    MOTOR_SENSOR.set_position(-180)
 
-    try:
-        MOTOR_SENSOR.set_position(SENSOR_PARK_DEG)
-    except:
-        if DEBUG:
-            print("[PARK] set_position failed, using relative")
-        MOTOR_SENSOR.set_position_relative(SENSOR_PARK_DEG)
-
-    MOTOR_SENSOR.set_dps(SWEEP_DPS)
-
-    # wait until motor slows down / stops
-    while not emergency_stopped:
-        try:
-            dps = MOTOR_SENSOR.get_dps()
-            if DEBUG:
-                print(f"[PARK] dps={dps:.1f}")
-        except:
-            if DEBUG:
-                print("[PARK] get_dps not available, sleeping 0.3s")
-            sleep(0.3)
-            break
-
-        if abs(dps) <= 5:
-            break
-        sleep(0.01)
-
-    MOTOR_SENSOR.set_dps(0)
-    if DEBUG:
-        print("[PARK] Done.")
-
-
-def center_color_sensor():
-    """
-    Rotate color sensor arm to the middle/front of the robot.
-    Assumes encoder 0 = centered. If not true, adjust target.
-    """
-    if DEBUG:
-        print("[CENTER] Centering sensor (encoder reset → 0)")
-
-    MOTOR_SENSOR.set_limits(dps=SWEEP_DPS, power=SWEEP_POWER)
-    MOTOR_SENSOR.reset_encoder()
-
-    try:
-        MOTOR_SENSOR.set_position(0)
-    except:
-        if DEBUG:
-            print("[CENTER] set_position(0) not supported")
-
-    MOTOR_SENSOR.set_dps(SWEEP_DPS)
-
-    while not emergency_stopped:
-        try:
-            dps = MOTOR_SENSOR.get_dps()
-            if DEBUG:
-                print(f"[CENTER] dps={dps:.1f}")
-        except:
-            if DEBUG:
-                print("[CENTER] get_dps missing, sleeping 0.3s")
-            sleep(0.3)
-            break
-
-        if abs(dps) <= 5:
-            break
-        sleep(0.01)
-
-    MOTOR_SENSOR.set_dps(0)
-    if DEBUG:
-        print("[CENTER] Done.")
-
+def sensor_sweep_right():
+    MOTOR_SENSOR.set_position(180)
 
 # move_forward_1cm working fine
 def move_forward_1cm():
@@ -531,168 +460,6 @@ def move_forward_1cm():
     if DEBUG:
         print("[STEP] Step complete.")
 
-
-"""def windshieldwiper_detect_green():
-    if DEBUG:
-        print("[SWEEP] Starting sweep… (center → right → left)")
-
-    MOTOR_SENSOR.set_limits(dps=SWEEP_DPS, power=SWEEP_POWER)
-
-    # Start centered
-    try:
-        MOTOR_SENSOR.set_position(0)
-    except:
-        pass
-    MOTOR_SENSOR.set_dps(SWEEP_DPS)
-
-    # wait for settle
-    sleep(0.2)
-
-    # --- SWEEP RIGHT ---
-    if DEBUG:
-        print("[SWEEP] Sweeping RIGHT +", SWEEP_HALF_DEG)
-
-    MOTOR_SENSOR.set_position_relative(+SWEEP_HALF_DEG)
-    MOTOR_SENSOR.set_dps(SWEEP_DPS)
-
-    while not emergency_stopped:
-        color = get_color_name()
-        dps = None
-        try:
-            dps = MOTOR_SENSOR.get_dps()
-        except:
-            pass
-
-        if DEBUG:
-            print(f"[SWEEP-R] color={color}, dps={dps}")
-
-        if detect_green():
-            if DEBUG:
-                print("[SWEEP-R] GREEN FOUND!")
-            MOTOR_SENSOR.set_dps(0)
-            return True
-
-        if dps is not None and abs(dps) <= 5:
-            break
-        sleep(0.01)
-
-    # --- SWEEP LEFT ---
-    if DEBUG:
-        print("[SWEEP] Sweeping LEFT -", 2 * SWEEP_HALF_DEG)
-
-    MOTOR_SENSOR.set_position_relative(-2 * SWEEP_HALF_DEG)
-    MOTOR_SENSOR.set_dps(SWEEP_DPS)
-
-    while not emergency_stopped:
-        color = get_color_name()
-        dps = None
-        try:
-            dps = MOTOR_SENSOR.get_dps()
-        except:
-            pass
-
-        if DEBUG:
-            print(f"[SWEEP-L] color={color}, dps={dps}")
-
-        if detect_green():
-            if DEBUG:
-                print("[SWEEP-L] GREEN FOUND!")
-            MOTOR_SENSOR.set_dps(0)
-            return True
-
-        if dps is not None and abs(dps) <= 5:
-            break
-        sleep(0.01)
-
-    # Optional re-center
-    try:
-        MOTOR_SENSOR.set_position(0)
-    except:
-        pass
-    MOTOR_SENSOR.set_dps(SWEEP_DPS)
-    sleep(0.2)
-
-    MOTOR_SENSOR.set_dps(0)
-
-    if DEBUG:
-        print("[SWEEP] No green found in full 180° sweep.")
-    return False
-"""
-
-
-def windshieldwiper_detect_green():
-    if DEBUG:
-        print("[SWEEP] Starting sweep… (center → right → left)")
-
-    MOTOR_SENSOR.set_limits(dps=SWEEP_DPS, power=SWEEP_POWER)
-
-    # Start centered
-    try:
-        MOTOR_SENSOR.set_position(0)
-    except:
-        pass
-
-    sleep(0.2)
-
-    def sweep_to_relative(delta_deg, label):
-        # read current position to compute an absolute target
-        try:
-            start_pos = MOTOR_SENSOR.get_position()
-        except:
-            start_pos = 0
-
-        target = start_pos + delta_deg
-
-        if DEBUG:
-            dir_str = "RIGHT" if delta_deg > 0 else "LEFT"
-            print(f"[SWEEP] Sweeping {dir_str} {label} to target={target}")
-
-        MOTOR_SENSOR.set_position_relative(delta_deg)
-
-        # wait until we reach target OR green is found
-        while not emergency_stopped:
-            if detect_green():
-                if DEBUG:
-                    print(f"[SWEEP-{label}] GREEN FOUND!")
-                MOTOR_SENSOR.set_dps(0)
-                return True
-
-            # check position error
-            try:
-                pos = MOTOR_SENSOR.get_position()
-                err = target - pos
-            except:
-                err = None
-
-            if err is not None and abs(err) <= 2:  # 2° tolerance
-                break
-
-            sleep(0.01)
-
-        return False
-
-    # --- SWEEP RIGHT ---
-    if sweep_to_relative(+SWEEP_HALF_DEG, "R"):
-        return True
-
-    # --- SWEEP LEFT (go past center to left end) ---
-    if sweep_to_relative(-2 * SWEEP_HALF_DEG, "L"):
-        return True
-
-    # Optional re-center
-    try:
-        MOTOR_SENSOR.set_position(0)
-    except:
-        pass
-    sleep(0.2)
-
-    MOTOR_SENSOR.set_dps(0)
-
-    if DEBUG:
-        print("[SWEEP] No green found in full sweep.")
-    return False
-
-
 # ============= ROOM ENTERING AND SCANNING =============
 enter_room_started = False
 
@@ -703,10 +470,9 @@ def enter_room():
     if not enter_room_started:
         enter_room_started = True
         if DEBUG:
-            print("\n[ENTER_ROOM] Entering ENTERING_ROOM state. Centering sensor.")
+            print("\n[ENTER_ROOM] Entering ENTERING_ROOM state.Ready to scan.")
         stop_movement()
         COLOR_SENSOR.set_mode("id")
-        center_color_sensor()
 
     detects_green = False
     sweep_count = 0
@@ -717,7 +483,8 @@ def enter_room():
             print(f"\n[ENTER_ROOM] Sweep cycle #{sweep_count}")
 
         move_forward_1cm()
-        detects_green = windshieldwiper_detect_green()
+        sensor_sweep_left()
+        sensor_sweep_right()
 
         if DEBUG:
             print(f"[ENTER_ROOM] Sweep result: green={detects_green}")
@@ -764,7 +531,6 @@ def state_machine():
 
         elif current_state == State.MISSION_COMPLETE:
             pass
-
         sleep(0.05)
 
 

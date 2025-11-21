@@ -426,11 +426,13 @@ def checking_doorway():
 CM_STEP_TIME = 0.15     # seconds to move forward ~1 cm (TUNE on floor)
 STEP_DPS = SPEED / 4    # forward speed during the 1cm step
 
-SWEEP_DPS = 180         # sensor sweep speed
+SWEEP_DPS = 180        # sensor sweep speed
 SWEEP_POWER = 60        # sensor sweep torque
 SWEEP_HALF_DEG = 90     # +/-90 = 180° total sweep
 SENSOR_PARK_DEG = 90
 DEBUG = True
+
+# don't know if working
 
 
 def park_color_sensor_right():
@@ -512,6 +514,7 @@ def center_color_sensor():
         print("[CENTER] Done.")
 
 
+# move_forward_1cm working fine
 def move_forward_1cm():
     """
     Move forward a tiny step (~1 cm) using time-based control.
@@ -529,7 +532,7 @@ def move_forward_1cm():
         print("[STEP] Step complete.")
 
 
-def windshieldwiper_detect_green():
+"""def windshieldwiper_detect_green():
     if DEBUG:
         print("[SWEEP] Starting sweep… (center → right → left)")
 
@@ -613,6 +616,80 @@ def windshieldwiper_detect_green():
 
     if DEBUG:
         print("[SWEEP] No green found in full 180° sweep.")
+    return False
+"""
+
+
+def windshieldwiper_detect_green():
+    if DEBUG:
+        print("[SWEEP] Starting sweep… (center → right → left)")
+
+    MOTOR_SENSOR.set_limits(dps=SWEEP_DPS, power=SWEEP_POWER)
+
+    # Start centered
+    try:
+        MOTOR_SENSOR.set_position(0)
+    except:
+        pass
+
+    sleep(0.2)
+
+    def sweep_to_relative(delta_deg, label):
+        # read current position to compute an absolute target
+        try:
+            start_pos = MOTOR_SENSOR.get_position()
+        except:
+            start_pos = 0
+
+        target = start_pos + delta_deg
+
+        if DEBUG:
+            dir_str = "RIGHT" if delta_deg > 0 else "LEFT"
+            print(f"[SWEEP] Sweeping {dir_str} {label} to target={target}")
+
+        MOTOR_SENSOR.set_position_relative(delta_deg)
+
+        # wait until we reach target OR green is found
+        while not emergency_stopped:
+            if detect_green():
+                if DEBUG:
+                    print(f"[SWEEP-{label}] GREEN FOUND!")
+                MOTOR_SENSOR.set_dps(0)
+                return True
+
+            # check position error
+            try:
+                pos = MOTOR_SENSOR.get_position()
+                err = target - pos
+            except:
+                err = None
+
+            if err is not None and abs(err) <= 2:  # 2° tolerance
+                break
+
+            sleep(0.01)
+
+        return False
+
+    # --- SWEEP RIGHT ---
+    if sweep_to_relative(+SWEEP_HALF_DEG, "R"):
+        return True
+
+    # --- SWEEP LEFT (go past center to left end) ---
+    if sweep_to_relative(-2 * SWEEP_HALF_DEG, "L"):
+        return True
+
+    # Optional re-center
+    try:
+        MOTOR_SENSOR.set_position(0)
+    except:
+        pass
+    sleep(0.2)
+
+    MOTOR_SENSOR.set_dps(0)
+
+    if DEBUG:
+        print("[SWEEP] No green found in full sweep.")
     return False
 
 

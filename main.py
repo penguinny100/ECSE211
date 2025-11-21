@@ -495,6 +495,7 @@ def checking_doorway():
         # No red seen by halfway: safe doorway, enter the room.
         print("Doorway clear (no red) -> entering room.")
         turn_right()
+        #PUT CODE HERE TO PUT COLOR SENSOR STICK TO MIDDLE
         current_state = State.ENTERING_ROOM
 
     return
@@ -527,6 +528,7 @@ def enter_room():
         move_backward()
         sleep(2)
         turn_left()
+        #PUT CODE HERE TO PUT COLOR SENSOR STICK BACK TO RIGHT
         current_state = State.FOLLOWING_LINE
         return
 
